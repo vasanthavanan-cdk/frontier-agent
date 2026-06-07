@@ -1,0 +1,44 @@
+version: "1.0"
+name: "default_research"
+description: "Research workflow: plan → investigate → document. Best for analysis, summaries, and technical research."
+
+models:
+  planner: "gemma4:12b"
+  coder: "gemma4:12b"
+  reviewer: "gemma4:12b"
+  documenter: "gemma4:12b"
+  fallback_premium: "claude-sonnet-4-5"
+
+confidence_thresholds:
+  planner: 0.65
+  coder: 0.65
+  reviewer: 0.70
+  documenter: 0.65
+  default: 0.65
+
+escalation:
+  require_human_approval: true
+  max_local_retries: 2
+
+steps:
+  - id: plan
+    agent: planner
+    input_template: "{{user_task}}"
+    output_key: plan
+
+  - id: research
+    agent: coder
+    input_template: "{{plan}}"
+    depends_on: [plan]
+    output_key: research
+
+  - id: document
+    agent: documenter
+    input_template: "{{research}}"
+    depends_on: [research]
+    output_key: document
+    optional: true
+
+routing_rules:
+  - condition: "confidence['coder'] < thresholds['coder'] and retries >= 2"
+    action: escalate

@@ -1,0 +1,45 @@
+version: "1.0"
+name: "default_coding"
+description: "Coding workflow: plan → implement → review. Best for writing, refactoring, or debugging code."
+
+models:
+  planner: "gemma4:12b"
+  coder: "gemma4:12b"
+  reviewer: "gemma4:12b"
+  documenter: "gemma4:12b"
+  fallback_premium: "claude-sonnet-4-5"
+
+confidence_thresholds:
+  planner: 0.70
+  coder: 0.75
+  reviewer: 0.78
+  documenter: 0.65
+  default: 0.70
+
+escalation:
+  require_human_approval: true
+  max_local_retries: 2
+
+steps:
+  - id: plan
+    agent: planner
+    input_template: "{{user_task}}"
+    output_key: plan
+
+  - id: code
+    agent: coder
+    input_template: "{{plan}}"
+    depends_on: [plan]
+    output_key: code
+
+  - id: review
+    agent: reviewer
+    input_template: "{{code}}"
+    depends_on: [code]
+    output_key: review
+
+routing_rules:
+  - condition: "confidence['coder'] < thresholds['coder'] and retries >= 2"
+    action: escalate
+  - condition: "confidence['reviewer'] < thresholds['reviewer'] and retries >= 2"
+    action: escalate

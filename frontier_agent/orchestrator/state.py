@@ -1,0 +1,73 @@
+from __future__ import annotations
+
+from enum import Enum
+from typing import Annotated
+import operator
+
+from pydantic import BaseModel, Field
+
+
+class TaskType(str, Enum):
+    coding = "coding"
+    research = "research"
+    review = "review"
+    documentation = "documentation"
+    debugging = "debugging"
+    planning = "planning"
+    general = "general"
+
+
+class AgentOutput(BaseModel):
+    agent: str
+    content: str
+    confidence: float = 0.0
+    attempt: int = 1
+
+
+class TokenUsage(BaseModel):
+    local_tokens: int = 0
+    premium_tokens: int = 0
+    premium_cost_usd: float = 0.0
+
+
+class AgentState(BaseModel):
+    task_id: str = ""
+    original_input: str = ""
+    workflow_name: str = "default_coding"
+    task_type: TaskType = TaskType.general
+    current_step: str = "planner"
+
+    # accumulated outputs — merged across retries
+    agent_outputs: Annotated[dict[str, AgentOutput], operator.or_] = Field(default_factory=dict)
+    confidence_scores: Annotated[dict[str, float], operator.or_] = Field(default_factory=dict)
+
+    # retry tracking per step
+    retry_counts: Annotated[dict[str, int], operator.or_] = Field(default_factory=dict)
+
+    # escalation
+    escalation_requested: bool = False
+    escalation_approved: bool = False
+    escalation_reason: str = ""
+
+    final_output: str = ""
+    token_usage: TokenUsage = Field(default_factory=TokenUsage)
+
+    # model tag to use for each agent role (populated from YAML workflow)
+    model_assignments: dict[str, str] = Field(default_factory=lambda: {
+        "planner": "gemma4:12b",
+        "coder": "gemma4:12b",
+        "reviewer": "gemma4:12b",
+        "documenter": "gemma4:12b",
+    })
+
+    # configurable thresholds (from YAML workflow)
+    confidence_thresholds: dict[str, float] = Field(default_factory=lambda: {
+        "planner": 0.70,
+        "coder": 0.75,
+        "reviewer": 0.80,
+        "documenter": 0.65,
+        "default": 0.70,
+    })
+
+    max_local_retries: int = 2
+    fallback_premium_model: str = "claude-sonnet-4-5"

@@ -1,0 +1,20 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Environment
+.env
+*.env.local
+
+# Benchmark outputs (raw results, not reports)
+benchmarks/results/
+
+# Temp / OS
+.DS_Store
+*.log
+/tmp/
