@@ -203,6 +203,97 @@ def status() -> None:
     console.print()
 
 
+# ── frontier mcp-status ───────────────────────────────────────────────────────
+
+@app.command("mcp-status")
+def mcp_status() -> None:
+    """Check whether the MCP server and Ollama are healthy."""
+    import subprocess
+    import urllib.request
+    import sys
+
+    console.print()
+    all_ok = True
+
+    # ── 1. Python executable reachable ───────────────────────────────────────
+    python_bin = sys.executable
+    console.print(f"[bold]Python[/bold]  {python_bin}")
+
+    # ── 2. mcp package installed ─────────────────────────────────────────────
+    try:
+        import mcp  # noqa: F401
+        import importlib.metadata
+        mcp_ver = importlib.metadata.version("mcp")
+        console.print(f"[bold]mcp pkg[/bold] [green]✓[/green]  v{mcp_ver}")
+    except Exception:
+        console.print("[bold]mcp pkg[/bold] [red]✗ not installed[/red] — run: pip install mcp")
+        all_ok = False
+
+    # ── 3. mcp_server module importable ──────────────────────────────────────
+    try:
+        from frontier_agent import mcp_server  # noqa: F401
+        console.print("[bold]server [/bold] [green]✓[/green]  frontier_agent.mcp_server importable")
+    except Exception as e:
+        console.print(f"[bold]server [/bold] [red]✗ import failed:[/red] {e}")
+        all_ok = False
+
+    # ── 4. Ollama process reachable ───────────────────────────────────────────
+    try:
+        urllib.request.urlopen("http://localhost:11434", timeout=2)
+        console.print("[bold]Ollama [/bold] [green]✓[/green]  http://localhost:11434 responding")
+    except Exception:
+        console.print(
+            "[bold]Ollama [/bold] [red]✗ not reachable[/red] — run: "
+            "OLLAMA_FLASH_ATTENTION=1 OLLAMA_KV_CACHE_TYPE=q8_0 ollama serve"
+        )
+        all_ok = False
+
+    # ── 5. gemma4:12b downloaded ──────────────────────────────────────────────
+    result = subprocess.run(["ollama", "list"], capture_output=True, text=True)
+    if "gemma4:12b" in result.stdout:
+        console.print("[bold]Model  [/bold] [green]✓[/green]  gemma4:12b present")
+    else:
+        console.print("[bold]Model  [/bold] [yellow]⚠ gemma4:12b not found[/yellow] — run: ollama pull gemma4:12b")
+        all_ok = False
+
+    # ── 6. claude mcp list (only if claude CLI available) ────────────────────
+    import shutil
+    if shutil.which("claude"):
+        r = subprocess.run(["claude", "mcp", "list"], capture_output=True, text=True, timeout=10)
+        if "frontier-agent" in r.stdout and "Connected" in r.stdout:
+            console.print("[bold]Claude [/bold] [green]✓[/green]  frontier-agent registered and connected")
+        elif "frontier-agent" in r.stdout:
+            console.print("[bold]Claude [/bold] [yellow]⚠ frontier-agent registered but not connected[/yellow]")
+            all_ok = False
+        else:
+            console.print(
+                "[bold]Claude [/bold] [yellow]⚠ not registered[/yellow] — run:\n"
+                "  claude mcp add --scope user frontier-agent -- "
+                f"{sys.executable} -m frontier_agent.mcp_server"
+            )
+            all_ok = False
+    else:
+        console.print("[bold]Claude [/bold] [dim]– claude CLI not found (skip)[/dim]")
+
+    # ── summary ───────────────────────────────────────────────────────────────
+    console.print()
+    if all_ok:
+        console.print(Panel.fit(
+            "[green bold]All checks passed.[/green bold]  "
+            "MCP server is ready — any connected agent can call frontier-agent tools.",
+            border_style="green",
+        ))
+    else:
+        console.print(Panel.fit(
+            "[yellow bold]Some checks failed.[/yellow bold]  "
+            "Fix the items marked [red]✗[/red] or [yellow]⚠[/yellow] above.",
+            border_style="yellow",
+        ))
+        raise typer.Exit(1)
+
+    console.print()
+
+
 # ── frontier bench ────────────────────────────────────────────────────────────
 
 @app.command("bench")
