@@ -53,66 +53,45 @@ Equivalent direct-Claude cost for the same 5 tasks: ~$0.057
 
 | Requirement | Notes |
 |-------------|-------|
-| Mac with Apple Silicon (M1–M4) | Tested on M4 Pro |
+| Mac (Apple Silicon) or Linux | Tested on M4 Pro; Linux amd64/arm64 supported |
 | 16 GB unified memory (24 GB recommended) | Gemma 4 12B needs ~8 GB headroom |
-| [Ollama.app](https://ollama.com/download/mac) — **official installer only** | See note below |
 | Python 3.11+ | 3.14 recommended |
-| `ANTHROPIC_API_KEY` | Only needed if you approve escalation |
+| `ANTHROPIC_API_KEY` | Only needed if you approve escalation to Claude |
 
-> **Ollama — do not use Homebrew.** `brew install ollama` ships the MLX-only backend which requires 32 GB minimum. For 16–24 GB systems install from [ollama.com/download/mac](https://ollama.com/download/mac) to get the full GGUF/llama.cpp backend.
+Ollama is installed automatically by `frontier start` — no manual download needed.
 
 ---
 
 ## New Machine Setup
 
-Follow these steps exactly on a fresh machine.
-
-### 1 — Install Ollama (official app)
-
-Download from [ollama.com/download/mac](https://ollama.com/download/mac) and drag to Applications. Then start the server with performance flags:
-
 ```bash
-OLLAMA_FLASH_ATTENTION=1 OLLAMA_KV_CACHE_TYPE=q8_0 ollama serve
-```
-
-Pull the default model (~7.6 GB):
-
-```bash
-ollama pull gemma4:12b
-```
-
-### 2 — Clone and install
-
-```bash
+# 1. Clone and install
 git clone https://github.com/vasanthavanan-cdk/frontier-agent.git
 cd frontier-agent
-
-python3 -m venv .venv
-source .venv/bin/activate
+python3 -m venv .venv && source .venv/bin/activate
 pip install -e .
-```
 
-### 3 — Configure environment
+# 2. Make frontier available everywhere (no venv activation needed after this)
+frontier install-global --dir ~/.local/bin
+source ~/.zshrc          # or ~/.bash_profile on bash
 
-```bash
+# 3. Configure environment (only needed for Claude escalation)
 cp .env.example .env
+# edit .env and add: ANTHROPIC_API_KEY=sk-ant-...
+
+# 4. Start — installs Ollama and pulls gemma4:12b automatically if missing
+frontier start
 ```
 
-Edit `.env`:
+That's it. `frontier start` handles the rest:
 
-```bash
-OLLAMA_BASE_URL=http://localhost:11434   # leave as-is
-ANTHROPIC_API_KEY=sk-ant-...            # only needed for escalation
-```
+| What it checks | What it does if missing |
+|----------------|------------------------|
+| `ollama` binary | Downloads from GitHub releases to `~/.local/bin` |
+| Ollama server | Starts it with performance flags in the background |
+| `gemma4:12b` model | Pulls it (~7.6 GB, one-time download) |
 
-### 4 — Verify
-
-```bash
-frontier status          # should show gemma4:12b as downloaded
-frontier run "Write a Python function to reverse a string"
-```
-
-You should see the planner → coder → reviewer pipeline run locally with no escalation prompt.
+> **Note for macOS users who installed Ollama via Homebrew:** `brew install ollama` ships the MLX-only backend which requires 32 GB minimum and will fail on 16–24 GB machines. Run `brew uninstall ollama` first, then let `frontier start` install the correct binary.
 
 ---
 
@@ -370,7 +349,7 @@ frontier-agent/
 ## Troubleshooting
 
 **`llama-server binary not found` when starting Ollama**
-You installed Ollama via Homebrew. Uninstall it (`brew uninstall ollama`) and install the official app from [ollama.com/download/mac](https://ollama.com/download/mac).
+You installed Ollama via Homebrew (`brew install ollama`), which ships the MLX-only backend and requires 32 GB minimum. Run `brew uninstall ollama`, then `frontier start` will download the correct binary automatically.
 
 **Escalation gate appears for simple tasks**
 Lower the confidence thresholds in the relevant workflow YAML (e.g. set `coder: 0.60`). No restart needed.
