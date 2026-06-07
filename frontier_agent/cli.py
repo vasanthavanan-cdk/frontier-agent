@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import os
 import subprocess
+import sys
+import time
+import urllib.request
 from pathlib import Path
 
 import typer
@@ -21,6 +25,186 @@ app.add_typer(models_app, name="models")
 console = Console()
 
 _WORKFLOWS_DIR = Path(__file__).parent / "workflows" / "definitions"
+_STATE_DIR = Path.home() / ".frontier"
+_OLLAMA_PID_FILE = _STATE_DIR / "ollama.pid"
+_OLLAMA_URL = "http://localhost:11434"
+_DEFAULT_MODEL = "gemma4:12b"
+
+
+def _ollama_running() -> bool:
+    try:
+        urllib.request.urlopen(_OLLAMA_URL, timeout=2)
+        return True
+    except Exception:
+        return False
+
+
+def _wait_for_ollama(timeout: int = 20) -> bool:
+    for _ in range(timeout):
+        if _ollama_running():
+            return True
+        time.sleep(1)
+    return False
+
+
+# ── frontier start ───────────────────────────────────────────────────────────
+
+@app.command("start")
+def start() -> None:
+    """Start Ollama and load the default model. Safe to call if already running."""
+    import shutil
+
+    console.print()
+
+    # ── Ollama binary ─────────────────────────────────────────────────────────
+    if not shutil.which("ollama"):
+        console.print(Panel.fit(
+            "[red bold]Ollama not found.[/red bold]\n"
+            "Install the official app from [link]https://ollama.com/download/mac[/link]\n"
+            "[dim](Do not use Homebrew — it ships the MLX-only backend.)[/dim]",
+            border_style="red",
+        ))
+        raise typer.Exit(1)
+
+    # ── Start Ollama if not running ───────────────────────────────────────────
+    if _ollama_running():
+        console.print("[green]✓[/green] Ollama already running")
+    else:
+        console.print("[dim]Starting Ollama...[/dim]")
+        _STATE_DIR.mkdir(parents=True, exist_ok=True)
+        env = os.environ.copy()
+        env["OLLAMA_FLASH_ATTENTION"] = "1"
+        env["OLLAMA_KV_CACHE_TYPE"] = "q8_0"
+        log_path = _STATE_DIR / "ollama.log"
+        with open(log_path, "w") as log:
+            proc = subprocess.Popen(
+                ["ollama", "serve"],
+                env=env,
+                stdout=log,
+                stderr=log,
+                start_new_session=True,
+            )
+        _OLLAMA_PID_FILE.write_text(str(proc.pid))
+
+        if _wait_for_ollama(timeout=20):
+            console.print(f"[green]✓[/green] Ollama started  (pid {proc.pid})")
+        else:
+            console.print(
+                "[red]✗ Ollama did not respond after 20 s.[/red]\n"
+                f"  Check log: {log_path}"
+            )
+            raise typer.Exit(1)
+
+    # ── Ensure default model is present ──────────────────────────────────────
+    result = subprocess.run(["ollama", "list"], capture_output=True, text=True)
+    if _DEFAULT_MODEL in result.stdout:
+        console.print(f"[green]✓[/green] {_DEFAULT_MODEL} ready")
+    else:
+        console.print(f"[dim]Pulling {_DEFAULT_MODEL} (~7.6 GB, one-time download)...[/dim]")
+        pull = subprocess.run(["ollama", "pull", _DEFAULT_MODEL])
+        if pull.returncode == 0:
+            console.print(f"[green]✓[/green] {_DEFAULT_MODEL} downloaded")
+        else:
+            console.print(f"[red]✗ Failed to pull {_DEFAULT_MODEL}[/red]")
+            raise typer.Exit(1)
+
+    console.print()
+    console.print(Panel.fit(
+        "[green bold]Frontier Agent is ready.[/green bold]\n"
+        "Run [bold]frontier run \"your task\"[/bold] or connect via MCP.",
+        border_style="green",
+    ))
+    console.print()
+
+
+# ── frontier stop ─────────────────────────────────────────────────────────────
+
+@app.command("stop")
+def stop() -> None:
+    """Stop Ollama. The MCP server exits automatically with your agent session."""
+    import shutil
+    import signal
+
+    console.print()
+
+    if not _ollama_running():
+        console.print("[dim]Ollama is not running — nothing to stop.[/dim]")
+        console.print()
+        return
+
+    stopped = False
+
+    # try saved PID first
+    if _OLLAMA_PID_FILE.exists():
+        try:
+            pid = int(_OLLAMA_PID_FILE.read_text().strip())
+            os.kill(pid, signal.SIGTERM)
+            _OLLAMA_PID_FILE.unlink(missing_ok=True)
+            stopped = True
+            console.print(f"[green]✓[/green] Sent SIGTERM to Ollama (pid {pid})")
+        except (ProcessLookupError, ValueError):
+            _OLLAMA_PID_FILE.unlink(missing_ok=True)
+
+    # fallback: pkill
+    if not stopped:
+        r = subprocess.run(["pkill", "-TERM", "-x", "ollama"], capture_output=True)
+        if r.returncode == 0:
+            console.print("[green]✓[/green] Stopped Ollama via pkill")
+        else:
+            console.print("[yellow]⚠ Could not find an Ollama process to stop.[/yellow]")
+
+    # wait up to 5 s for it to exit
+    for _ in range(5):
+        time.sleep(1)
+        if not _ollama_running():
+            break
+
+    if _ollama_running():
+        console.print("[yellow]⚠ Ollama still responding — may need a moment to shut down.[/yellow]")
+    else:
+        console.print("[green]✓[/green] Ollama stopped")
+
+    console.print(
+        "\n[dim]MCP server processes exit automatically when your agent session closes.[/dim]\n"
+    )
+
+
+# ── frontier install-global ───────────────────────────────────────────────────
+
+@app.command("install-global")
+def install_global(
+    link_dir: str = typer.Option(
+        "/usr/local/bin",
+        "--dir",
+        help="Directory to place the symlink (must be on PATH).",
+    ),
+) -> None:
+    """Symlink the frontier binary into /usr/local/bin so it works from anywhere."""
+    frontier_bin = Path(sys.executable).parent / "frontier"
+    if not frontier_bin.exists():
+        console.print(f"[red]frontier binary not found at {frontier_bin}[/red]")
+        raise typer.Exit(1)
+
+    target = Path(link_dir) / "frontier"
+    if target.exists() or target.is_symlink():
+        target.unlink()
+
+    try:
+        target.symlink_to(frontier_bin)
+        console.print(f"[green]✓[/green] Symlink created: {target} → {frontier_bin}")
+        console.print(
+            "\n[dim]You can now run [bold]frontier[/bold] from any directory "
+            "without activating the venv.[/dim]\n"
+        )
+    except PermissionError:
+        console.print(
+            f"[red]Permission denied writing to {link_dir}.[/red]\n"
+            f"  Run with sudo:\n"
+            f"  [bold]sudo {sys.executable.replace('python', 'frontier')} install-global[/bold]\n"
+            f"  Or pick a dir you own:\n"
+            f"  [bold]frontier install-global --dir ~/.local/bin[/bold]"
+        )
+        raise typer.Exit(1)
 
 
 # ── frontier run ─────────────────────────────────────────────────────────────
