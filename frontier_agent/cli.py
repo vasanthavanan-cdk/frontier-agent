@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import os
+import platform
+import shutil
+import stat
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.request
 from pathlib import Path
@@ -47,26 +51,101 @@ def _wait_for_ollama(timeout: int = 20) -> bool:
     return False
 
 
+def _ollama_download_url() -> str:
+    """Return the correct Ollama binary URL for this platform."""
+    system = sys.platform
+    machine = platform.machine().lower()
+    if system == "darwin":
+        return "https://github.com/ollama/ollama/releases/latest/download/ollama-darwin"
+    if system == "linux":
+        arch = "arm64" if machine in ("arm64", "aarch64") else "amd64"
+        return f"https://github.com/ollama/ollama/releases/latest/download/ollama-linux-{arch}"
+    raise typer.BadParameter(f"Unsupported platform: {system}. Install Ollama manually from https://ollama.com")
+
+
+def _install_ollama() -> Path:
+    """Download the Ollama binary to ~/.local/bin/ollama and return its path."""
+    from rich.progress import Progress, DownloadColumn, BarColumn, TransferSpeedColumn, TimeRemainingColumn
+
+    install_dir = Path.home() / ".local" / "bin"
+    install_dir.mkdir(parents=True, exist_ok=True)
+    dest = install_dir / "ollama"
+
+    url = _ollama_download_url()
+    console.print(f"[dim]Downloading Ollama from GitHub releases...[/dim]")
+
+    downloaded = 0
+    total = 0
+
+    def _reporthook(block: int, block_size: int, total_size: int) -> None:
+        nonlocal downloaded, total
+        total = total_size
+        downloaded = min(block * block_size, total_size)
+
+    with tempfile.NamedTemporaryFile(delete=False) as tmp:
+        tmp_path = Path(tmp.name)
+
+    try:
+        with Progress(
+            "[progress.description]{task.description}",
+            BarColumn(),
+            DownloadColumn(),
+            TransferSpeedColumn(),
+            TimeRemainingColumn(),
+            console=console,
+            transient=True,
+        ) as progress:
+            task = progress.add_task("Downloading ollama", total=None)
+
+            def hook(block: int, block_size: int, total_size: int) -> None:
+                if total_size > 0:
+                    progress.update(task, total=total_size, completed=min(block * block_size, total_size))
+
+            urllib.request.urlretrieve(url, tmp_path, reporthook=hook)
+
+        tmp_path.replace(dest)
+        dest.chmod(dest.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    except Exception:
+        tmp_path.unlink(missing_ok=True)
+        raise
+
+    return dest
+
+
 # ── frontier start ───────────────────────────────────────────────────────────
 
 @app.command("start")
 def start() -> None:
-    """Start Ollama and load the default model. Safe to call if already running."""
-    import shutil
-
+    """Bootstrap and start Frontier Agent. Installs Ollama and pulls the model if needed."""
     console.print()
 
-    # ── Ollama binary ─────────────────────────────────────────────────────────
-    if not shutil.which("ollama"):
-        console.print(Panel.fit(
-            "[red bold]Ollama not found.[/red bold]\n"
-            "Install the official app from [link]https://ollama.com/download/mac[/link]\n"
-            "[dim](Do not use Homebrew — it ships the MLX-only backend.)[/dim]",
-            border_style="red",
-        ))
-        raise typer.Exit(1)
+    # ── Step 1: Ollama binary ─────────────────────────────────────────────────
+    ollama_bin = shutil.which("ollama")
+    if ollama_bin:
+        console.print(f"[green]✓[/green] Ollama found  ({ollama_bin})")
+    else:
+        console.print("[yellow]⚠[/yellow] Ollama not found — installing now...")
+        try:
+            dest = _install_ollama()
+            console.print(f"[green]✓[/green] Ollama installed to {dest}")
+            # add to current process PATH so we can call it immediately
+            os.environ["PATH"] = str(dest.parent) + os.pathsep + os.environ.get("PATH", "")
+            ollama_bin = str(dest)
 
-    # ── Start Ollama if not running ───────────────────────────────────────────
+            # remind user to add to shell PATH if ~/.local/bin not already there
+            shell_rc = Path.home() / (".zshrc" if os.path.exists(Path.home() / ".zshrc") else ".bash_profile")
+            path_line = 'export PATH="$HOME/.local/bin:$PATH"'
+            if path_line not in shell_rc.read_text(encoding="utf-8", errors="ignore") if shell_rc.exists() else "":
+                shell_rc.write_text(
+                    (shell_rc.read_text() if shell_rc.exists() else "") + f"\n{path_line}\n"
+                )
+                console.print(f"[dim]Added ~/.local/bin to PATH in {shell_rc.name} — run: source ~/{shell_rc.name}[/dim]")
+        except Exception as e:
+            console.print(f"[red]✗ Could not install Ollama: {e}[/red]")
+            console.print("[dim]Install manually: https://ollama.com/download[/dim]")
+            raise typer.Exit(1)
+
+    # ── Step 2: Start Ollama serve ────────────────────────────────────────────
     if _ollama_running():
         console.print("[green]✓[/green] Ollama already running")
     else:
@@ -78,7 +157,7 @@ def start() -> None:
         log_path = _STATE_DIR / "ollama.log"
         with open(log_path, "w") as log:
             proc = subprocess.Popen(
-                ["ollama", "serve"],
+                [ollama_bin or "ollama", "serve"],
                 env=env,
                 stdout=log,
                 stderr=log,
@@ -89,18 +168,15 @@ def start() -> None:
         if _wait_for_ollama(timeout=20):
             console.print(f"[green]✓[/green] Ollama started  (pid {proc.pid})")
         else:
-            console.print(
-                "[red]✗ Ollama did not respond after 20 s.[/red]\n"
-                f"  Check log: {log_path}"
-            )
+            console.print(f"[red]✗ Ollama did not respond after 20 s — check: {log_path}[/red]")
             raise typer.Exit(1)
 
-    # ── Ensure default model is present ──────────────────────────────────────
+    # ── Step 3: Pull model if missing ─────────────────────────────────────────
     result = subprocess.run(["ollama", "list"], capture_output=True, text=True)
     if _DEFAULT_MODEL in result.stdout:
         console.print(f"[green]✓[/green] {_DEFAULT_MODEL} ready")
     else:
-        console.print(f"[dim]Pulling {_DEFAULT_MODEL} (~7.6 GB, one-time download)...[/dim]")
+        console.print(f"[yellow]⚠[/yellow] {_DEFAULT_MODEL} not found — pulling now (~7.6 GB, one-time)...")
         pull = subprocess.run(["ollama", "pull", _DEFAULT_MODEL])
         if pull.returncode == 0:
             console.print(f"[green]✓[/green] {_DEFAULT_MODEL} downloaded")
