@@ -1,6 +1,6 @@
 # Frontier Agent
 
-A local-first AI orchestration platform that routes tasks to offline models on your Mac, escalating to Claude or other premium models **only with your explicit approval**.
+A local-first AI orchestration platform. Runs tasks through **Gemma 4 12B on your Mac** and escalates to Claude or other premium models **only with your explicit approval**.
 
 Built to reduce Claude token consumption and GitHub Copilot AI credit usage without sacrificing quality.
 
@@ -30,13 +30,13 @@ Confidence Scorer              ← behavioural signals, not model self-report
                                   Claude / GPT
 ```
 
-No premium model is ever called without a blocking prompt showing you the confidence breakdown, reason, and estimated cost.
+No premium model is called without a blocking prompt showing you the confidence breakdown, reason, and estimated cost.
 
 ---
 
 ## Benchmark Results
 
-Tested on Mac Mini M4 Pro 24GB — all tasks ran fully locally:
+Tested on Mac Mini M4 Pro 24 GB — all tasks ran fully locally:
 
 | Category | Tasks | Avg Score | Local ≥4 Rate | Escalations | Cost |
 |----------|-------|-----------|---------------|-------------|------|
@@ -45,79 +45,232 @@ Tested on Mac Mini M4 Pro 24GB — all tasks ran fully locally:
 | Research | 1 | 5.0/5 | 100% | 0 | $0.00 |
 | **Overall** | **5** | **4.6/5** | **80%** | **0** | **$0.00** |
 
-Equivalent direct-Claude cost for the same tasks: ~$0.057
+Equivalent direct-Claude cost for the same 5 tasks: ~$0.057
 
 ---
 
 ## Requirements
 
-- Mac with Apple Silicon (M1/M2/M3/M4)
-- 16GB+ unified memory (24GB recommended for 32B models)
-- [Ollama](https://ollama.com) — official app installer (not Homebrew — see note below)
-- Python 3.11+
+| Requirement | Notes |
+|-------------|-------|
+| Mac with Apple Silicon (M1–M4) | Tested on M4 Pro |
+| 16 GB unified memory (24 GB recommended) | Gemma 4 12B needs ~8 GB headroom |
+| [Ollama.app](https://ollama.com/download/mac) — **official installer only** | See note below |
+| Python 3.11+ | 3.14 recommended |
+| `ANTHROPIC_API_KEY` | Only needed if you approve escalation |
 
-> **Note on Ollama installation:** The Homebrew `ollama` package ships the MLX backend only, which requires 32GB minimum. For 16–24GB systems, install from [ollama.com](https://ollama.com/download/mac) to get the full llama.cpp GGUF backend.
+> **Ollama — do not use Homebrew.** `brew install ollama` ships the MLX-only backend which requires 32 GB minimum. For 16–24 GB systems install from [ollama.com/download/mac](https://ollama.com/download/mac) to get the full GGUF/llama.cpp backend.
 
 ---
 
-## Setup
+## New Machine Setup
+
+Follow these steps exactly on a fresh machine.
+
+### 1 — Install Ollama (official app)
+
+Download from [ollama.com/download/mac](https://ollama.com/download/mac) and drag to Applications. Then start the server with performance flags:
 
 ```bash
-# 1. Clone
+OLLAMA_FLASH_ATTENTION=1 OLLAMA_KV_CACHE_TYPE=q8_0 ollama serve
+```
+
+Pull the default model (~7.6 GB):
+
+```bash
+ollama pull gemma4:12b
+```
+
+### 2 — Clone and install
+
+```bash
 git clone https://github.com/vasanthavanan-cdk/frontier-agent.git
 cd frontier-agent
 
-# 2. Install Ollama from https://ollama.com/download/mac
-# Then start the server
-OLLAMA_FLASH_ATTENTION=1 OLLAMA_KV_CACHE_TYPE=q8_0 ollama serve &
-
-# 3. Pull the default model (~7.6 GB)
-ollama pull gemma4:12b
-
-# 4. Create Python environment
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .
-
-# 5. Configure environment
-cp .env.example .env
-# Add ANTHROPIC_API_KEY only if you want Claude escalation enabled
 ```
+
+### 3 — Configure environment
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env`:
+
+```bash
+OLLAMA_BASE_URL=http://localhost:11434   # leave as-is
+ANTHROPIC_API_KEY=sk-ant-...            # only needed for escalation
+```
+
+### 4 — Verify
+
+```bash
+frontier status          # should show gemma4:12b as downloaded
+frontier run "Write a Python function to reverse a string"
+```
+
+You should see the planner → coder → reviewer pipeline run locally with no escalation prompt.
 
 ---
 
-## Usage
+## CLI Usage
 
 ```bash
-# Run any task through the local pipeline
-frontier run "Write a Python function that reverses a linked list"
+# Run any task (auto-detects workflow)
+frontier run "Refactor this auth module to use JWT"
 
-# Choose a specific workflow
+# Choose a workflow explicitly
+frontier run --workflow coding   "Add unit tests for UserService"
 frontier run --workflow research "Explain the CAP theorem"
-frontier run --workflow review "Review this auth middleware for security issues"
+frontier run --workflow review   "Review this middleware for security issues"
 
 # System status
 frontier status
 
-# See available workflows
+# List available workflows
 frontier workflows
 
 # Model management
 frontier models status          # show registry — downloaded vs available
 frontier models pull coding     # pull qwen2.5-coder:14b if coding quality is lacking
-frontier models pull reasoning  # pull deepseek-r1:14b for complex reasoning tasks
+frontier models pull reasoning  # pull deepseek-r1:14b for complex reasoning
 
-# Run benchmark suite
-frontier bench                  # local only
+# Benchmarking
+frontier bench                  # run 5-task mini-bench locally
 frontier bench --premium        # compare against Claude (requires ANTHROPIC_API_KEY)
 frontier bench --category coding
 ```
 
 ---
 
+## Connect to Your AI Agent
+
+Frontier Agent implements the **Model Context Protocol (MCP)** over stdio. Any MCP-compatible agent can use it as a tool — route tasks through the local pipeline before spending cloud tokens.
+
+### GitHub Copilot (VS Code)
+
+Requires VS Code 1.99+ with the GitHub Copilot extension.
+
+The `.vscode/mcp.json` file is already included in this repo:
+
+```json
+{
+  "servers": {
+    "frontier-agent": {
+      "type": "stdio",
+      "command": "${workspaceFolder}/.venv/bin/python",
+      "args": ["-m", "frontier_agent.mcp_server"]
+    }
+  }
+}
+```
+
+Open VS Code in this project folder and Copilot will detect the server automatically. In Copilot Chat, switch to **Agent mode** (`@` menu) and `frontier-agent` will appear as a tool.
+
+To enable it globally for all projects, add to your VS Code `settings.json`:
+
+```json
+"mcp": {
+  "servers": {
+    "frontier-agent": {
+      "type": "stdio",
+      "command": "/absolute/path/to/frontier-agent/.venv/bin/python",
+      "args": ["-m", "frontier_agent.mcp_server"]
+    }
+  }
+}
+```
+
+### Claude Code CLI
+
+```bash
+claude mcp add frontier-agent -- \
+  /absolute/path/to/frontier-agent/.venv/bin/python \
+  -m frontier_agent.mcp_server
+```
+
+Frontier Agent tools will appear automatically in any Claude Code session.
+
+### Cursor
+
+Add to `.cursor/mcp.json` in your project (or `~/.cursor/mcp.json` for global):
+
+```json
+{
+  "mcpServers": {
+    "frontier-agent": {
+      "command": "/absolute/path/to/frontier-agent/.venv/bin/python",
+      "args": ["-m", "frontier_agent.mcp_server"]
+    }
+  }
+}
+```
+
+### Windsurf
+
+Add to `~/.codeium/windsurf/mcp_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "frontier-agent": {
+      "command": "/absolute/path/to/frontier-agent/.venv/bin/python",
+      "args": ["-m", "frontier_agent.mcp_server"]
+    }
+  }
+}
+```
+
+### Continue.dev
+
+Add to `~/.continue/config.json` under `mcpServers`:
+
+```json
+{
+  "mcpServers": [
+    {
+      "name": "frontier-agent",
+      "command": "/absolute/path/to/frontier-agent/.venv/bin/python",
+      "args": ["-m", "frontier_agent.mcp_server"]
+    }
+  ]
+}
+```
+
+### Any other MCP client
+
+The server speaks standard **MCP stdio** transport. Use:
+
+- **Command**: `/absolute/path/to/frontier-agent/.venv/bin/python`
+- **Args**: `["-m", "frontier_agent.mcp_server"]`
+- **Transport**: `stdio`
+
+---
+
+## MCP Tools Reference
+
+| Tool | Description |
+|------|-------------|
+| `run_task` | Run a task through the local pipeline. Returns output, confidence scores, escalation status, token usage. |
+| `list_workflows` | List available workflows with model assignments and thresholds. |
+| `models_status` | Show which local models are downloaded with disk usage and roles. |
+| `get_result` | Retrieve a previous result by `task_id`. |
+
+### `run_task` parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `task` | string | required | The task or question to process |
+| `workflow` | string | `"coding"` | Workflow to use: `coding`, `research`, or `review` |
+
+---
+
 ## Escalation Gate
 
-When local confidence falls below the configured threshold after retries, you get a blocking prompt:
+When local confidence falls below threshold after retries, you get a blocking prompt:
 
 ```
 ╭──────────────── ⚠  ESCALATION REQUESTED ─────────────────╮
@@ -146,7 +299,7 @@ This prompt **cannot be bypassed** — `require_human_approval: true` is enforce
 
 ## Customising Workflows
 
-Workflows are plain YAML files — edit them directly, changes take effect on the next run with no restart needed.
+Workflows are plain YAML. Edit them directly — changes take effect on the next run with no restart.
 
 ```yaml
 # frontier_agent/workflows/definitions/default_coding.yaml
@@ -157,7 +310,7 @@ models:
   fallback_premium: "claude-sonnet-4-5"
 
 confidence_thresholds:
-  coder: 0.75      # lower = fewer escalations, higher = stricter quality gate
+  coder:    0.75   # lower = fewer escalations
   reviewer: 0.78
 
 escalation:
@@ -169,9 +322,11 @@ escalation:
 
 ## Model Stack
 
+Start with just `gemma4:12b`. Pull specialists only when you observe a real quality gap.
+
 | Model | Size | Role | Pull when |
 |-------|------|------|-----------|
-| `gemma4:12b` | 7.6 GB | Default orchestrator + all roles | Now (required) |
+| `gemma4:12b` | 7.6 GB | Default orchestrator + all roles | **Now (required)** |
 | `qwen2.5-coder:14b` | ~9 GB | Coding specialist | Coding quality insufficient |
 | `deepseek-r1:14b` | ~9 GB | Reasoning specialist | Complex multi-step reasoning fails |
 | `qwen3:14b` | ~9 GB | Fallback orchestrator | Gemma 4 tool-calling unreliable |
@@ -185,28 +340,49 @@ Maximum realistic footprint: **~27 GB** (vs ~140 GB if all were pre-downloaded).
 ```
 frontier-agent/
 ├── frontier_agent/
-│   ├── cli.py                          # Typer CLI — frontier run/status/models/bench
+│   ├── cli.py                    # Typer CLI — frontier run/status/models/bench
+│   ├── mcp_server.py             # MCP server — exposes 4 tools over stdio
 │   ├── orchestrator/
-│   │   ├── graph.py                    # LangGraph multi-agent graph
-│   │   ├── state.py                    # AgentState (Pydantic v2)
-│   │   ├── confidence.py               # Composite confidence scorer
-│   │   ├── escalation.py               # Human approval gate (Rich UI)
-│   │   ├── router.py                   # Conditional edge logic
-│   │   └── nodes/                      # planner, coder, reviewer, premium
+│   │   ├── graph.py              # LangGraph multi-agent graph
+│   │   ├── state.py              # AgentState (Pydantic v2)
+│   │   ├── confidence.py         # Composite confidence scorer
+│   │   ├── escalation.py         # Human approval gate (Rich UI)
+│   │   ├── router.py             # Conditional edge logic
+│   │   └── nodes/                # planner, coder, reviewer, premium
 │   ├── workflows/
-│   │   ├── schema.py                   # Pydantic WorkflowSpec
-│   │   ├── loader.py                   # YAML → LangGraph compiler
-│   │   └── definitions/                # default_coding/research/review.yaml
+│   │   ├── schema.py             # Pydantic WorkflowSpec
+│   │   ├── loader.py             # YAML → LangGraph compiler
+│   │   └── definitions/          # default_coding/research/review.yaml
 │   └── models/
-│       └── registry.py                 # Known models with roles and sizes
+│       └── registry.py           # Known models with roles and sizes
 ├── benchmarks/
-│   ├── runner.py                       # Benchmark execution engine
-│   ├── judge.py                        # Automated quality scoring (local LLM judge)
-│   └── tasks/suite.py                  # 20 standardised tasks (coding/reasoning/research)
+│   ├── runner.py                 # Benchmark execution engine
+│   ├── judge.py                  # Automated quality scoring (Gemma 4 judge)
+│   └── tasks/suite.py            # 20 standardised tasks
 ├── reports/
-│   └── milestone-1-validation.md       # Gemma 4 12B validation results
+│   └── milestone-1-validation.md # Gemma 4 12B validation results
+├── .vscode/mcp.json              # GitHub Copilot MCP config (auto-detected)
 └── pyproject.toml
 ```
+
+---
+
+## Troubleshooting
+
+**`llama-server binary not found` when starting Ollama**
+You installed Ollama via Homebrew. Uninstall it (`brew uninstall ollama`) and install the official app from [ollama.com/download/mac](https://ollama.com/download/mac).
+
+**Escalation gate appears for simple tasks**
+Lower the confidence thresholds in the relevant workflow YAML (e.g. set `coder: 0.60`). No restart needed.
+
+**MCP server not appearing in VS Code Copilot**
+Make sure you opened VS Code with the `frontier-agent` folder as the workspace root (not a parent folder). The `.vscode/mcp.json` is project-scoped.
+
+**`frontier` command not found after install**
+Activate the venv: `source .venv/bin/activate`. Or reinstall: `pip install -e .`.
+
+**Ollama connection refused**
+Start the server: `OLLAMA_FLASH_ATTENTION=1 OLLAMA_KV_CACHE_TYPE=q8_0 ollama serve`
 
 ---
 

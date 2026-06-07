@@ -1,0 +1,9 @@
+{
+  "servers": {
+    "frontier-agent": {
+      "type": "stdio",
+      "command": "${workspaceFolder}/.venv/bin/python",
+      "args": ["-m", "frontier_agent.mcp_server"]
+    }
+  }
+}
