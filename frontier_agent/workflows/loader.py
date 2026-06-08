@@ -77,4 +77,6 @@ def apply_workflow(state: AgentState, workflow: WorkflowSpec) -> AgentState:
         },
         "max_local_retries": e.max_local_retries,
         "fallback_premium_model": m.fallback_premium,
+        "research_enabled": workflow.research.enabled,
+        "research_max_sources": workflow.research.max_sources,
     })

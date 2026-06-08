@@ -61,3 +61,20 @@ def call_local_model(
     state.token_usage.local_tokens += len(content) // 4
 
     return output, confidence
+
+
+def research_preamble(state: AgentState) -> str:
+    """Return a formatted research context block to prepend to user messages.
+
+    Returns empty string when no research context is available, so callers
+    can unconditionally prepend it without any branching.
+    """
+    if not state.research_context:
+        return ""
+    sources = "\n".join(f"  - {s}" for s in state.research_sources[:6])
+    return (
+        f"\n=== RESEARCH BRIEF (live web sources, {len(state.research_sources)} pages) ===\n"
+        f"{state.research_context}\n"
+        f"Sources consulted:\n{sources}\n"
+        f"=== END RESEARCH BRIEF ===\n\n"
+    )

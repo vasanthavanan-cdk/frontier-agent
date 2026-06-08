@@ -9,7 +9,7 @@ from __future__ import annotations
 from rich.console import Console
 
 from ..state import AgentState
-from .base import call_local_model
+from .base import call_local_model, research_preamble
 
 console = Console()
 
@@ -29,8 +29,9 @@ def coder_node(state: AgentState) -> AgentState:
 
     plan = state.agent_outputs.get("planner")
     user_msg = (
-        f"Original request: {state.original_input}\n\n"
-        f"Plan:\n{plan.content if plan else 'No plan available'}"
+        research_preamble(state)
+        + f"Original request: {state.original_input}\n\n"
+        + f"Plan:\n{plan.content if plan else 'No plan available'}"
     )
 
     output, confidence = call_local_model(

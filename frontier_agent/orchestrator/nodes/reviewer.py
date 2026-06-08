@@ -8,7 +8,7 @@ from __future__ import annotations
 from rich.console import Console
 
 from ..state import AgentState
-from .base import call_local_model
+from .base import call_local_model, research_preamble
 
 console = Console()
 
@@ -32,8 +32,9 @@ def reviewer_node(state: AgentState) -> AgentState:
 
     coder_out = state.agent_outputs.get("coder")
     user_msg = (
-        f"Original request: {state.original_input}\n\n"
-        f"Implementation to review:\n{coder_out.content if coder_out else 'No implementation provided'}"
+        research_preamble(state)
+        + f"Original request: {state.original_input}\n\n"
+        + f"Implementation to review:\n{coder_out.content if coder_out else 'No implementation provided'}"
     )
 
     output, confidence = call_local_model(

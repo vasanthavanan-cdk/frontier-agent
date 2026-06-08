@@ -20,6 +20,10 @@ escalation:
   require_human_approval: true
   max_local_retries: 2
 
+research:
+  enabled: true        # fetch current web sources before planning
+  max_sources: 6       # pages to read and synthesize
+
 steps:
   - id: plan
     agent: planner

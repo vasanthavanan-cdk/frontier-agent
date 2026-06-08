@@ -62,6 +62,12 @@ class WorkflowStep(BaseModel):
         return self
 
 
+class ResearchConfig(BaseModel):
+    """Controls the web research node that runs before the planner."""
+    enabled: bool = False
+    max_sources: int = Field(5, ge=1, le=15)
+
+
 class RoutingRule(BaseModel):
     """Optional declarative routing override (not yet wired into the graph; reserved for future use)."""
     condition: str  # e.g. "confidence['coder'] < thresholds['coder'] and retries >= 2"
@@ -77,6 +83,7 @@ class WorkflowSpec(BaseModel):
     models: ModelAssignments = Field(default_factory=ModelAssignments)
     confidence_thresholds: ConfidenceThresholds = Field(default_factory=ConfidenceThresholds)
     escalation: EscalationConfig = Field(default_factory=EscalationConfig)
+    research: ResearchConfig = Field(default_factory=ResearchConfig)
     steps: list[WorkflowStep] = Field(default_factory=list)
     routing_rules: list[RoutingRule] = Field(default_factory=list)
 

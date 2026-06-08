@@ -13,6 +13,7 @@ from rich.panel import Panel
 from langgraph.graph import StateGraph, END
 
 from .state import AgentState, TokenUsage
+from .nodes.researcher import researcher_node
 from .nodes.planner import planner_node
 from .nodes.coder import coder_node
 from .nodes.reviewer import reviewer_node
@@ -53,6 +54,7 @@ def build_graph() -> StateGraph:
     """Compile and return the LangGraph StateGraph. Called once per `run()` invocation."""
     g = StateGraph(AgentState)
 
+    g.add_node("researcher", researcher_node)
     g.add_node("planner", planner_node)
     g.add_node("coder", coder_node)
     g.add_node("reviewer", reviewer_node)
@@ -60,7 +62,9 @@ def build_graph() -> StateGraph:
     g.add_node("premium", premium_node)
     g.add_node("done", _done_node)
 
-    g.set_entry_point("planner")
+    # researcher always runs first (no-op when research_enabled=False)
+    g.set_entry_point("researcher")
+    g.add_edge("researcher", "planner")
 
     g.add_conditional_edges("planner", after_planner, {
         "planner": "planner",

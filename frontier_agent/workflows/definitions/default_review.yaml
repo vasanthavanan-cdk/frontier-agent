@@ -20,6 +20,10 @@ escalation:
   require_human_approval: true
   max_local_retries: 3
 
+research:
+  enabled: false       # reviews work from code passed in — no web lookup needed
+  max_sources: 3
+
 steps:
   - id: plan
     agent: planner

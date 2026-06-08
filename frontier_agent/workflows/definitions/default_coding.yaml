@@ -20,6 +20,10 @@ escalation:
   require_human_approval: true
   max_local_retries: 2
 
+research:
+  enabled: false       # set to true for library/framework-specific tasks
+  max_sources: 4
+
 steps:
   - id: plan
     agent: planner

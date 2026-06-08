@@ -20,6 +20,8 @@ dependencies = [
     "anthropic>=0.40",
     "pyyaml>=6.0",
     "mcp>=1.0",
+    "duckduckgo-search>=6.0",
+    "trafilatura>=1.9",
 ]
 
 [project.scripts]

@@ -85,3 +85,10 @@ class AgentState(BaseModel):
 
     max_local_retries: int = 2
     fallback_premium_model: str = "claude-sonnet-4-5"
+
+    # web research (populated by researcher_node when research_enabled=True)
+    research_enabled: bool = False
+    research_max_sources: int = 5
+    research_context: str = ""
+    research_sources: list[str] = Field(default_factory=list)
+    research_queries: list[str] = Field(default_factory=list)

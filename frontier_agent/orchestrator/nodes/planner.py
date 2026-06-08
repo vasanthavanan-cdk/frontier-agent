@@ -9,7 +9,7 @@ from __future__ import annotations
 from rich.console import Console
 
 from ..state import AgentState, TaskType
-from .base import call_local_model
+from .base import call_local_model, research_preamble
 
 console = Console()
 
@@ -35,7 +35,7 @@ def planner_node(state: AgentState) -> AgentState:
         state=state,
         role="planner",
         system_prompt=_SYSTEM,
-        user_message=state.original_input,
+        user_message=research_preamble(state) + state.original_input,
     )
 
     # detect task type from planner output
