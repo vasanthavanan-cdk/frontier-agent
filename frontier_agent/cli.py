@@ -11,6 +11,7 @@ Commands:
   frontier mcp-status       Health-check the MCP server end-to-end
   frontier install-global   Symlink the CLI binary into a system PATH directory
   frontier bench            Run the benchmark suite and write a Markdown report
+  frontier logs             View or stream the pipeline activity log
 """
 from __future__ import annotations
 
@@ -655,6 +656,52 @@ def _write_md_report(report: "BenchReport") -> None:
     out = Path(__file__).parent.parent / "reports" / "milestone-5-benchmark-report.md"
     out.write_text("\n".join(lines))
     console.print(f"[dim]Report written to {out}[/dim]\n")
+
+
+# ── frontier logs ─────────────────────────────────────────────────────────────
+
+@app.command("logs")
+def logs(
+    lines: int = typer.Option(50, "--lines", "-n", help="Number of recent lines to show."),
+    follow: bool = typer.Option(False, "--follow", "-f", help="Stream new log entries in real time (like tail -f)."),
+) -> None:
+    """Show the Frontier Agent pipeline log (~/.frontier/mcp.log)."""
+    from .logger import log_path
+
+    log_file = log_path()
+    if not log_file.exists():
+        console.print("[yellow]No log file yet — run a task first.[/yellow]")
+        console.print(f"[dim]Expected location: {log_file}[/dim]")
+        raise typer.Exit(0)
+
+    console.print(f"[dim]Log file: {log_file}[/dim]\n")
+
+    if follow:
+        # stream with tail -f
+        try:
+            subprocess.run(["tail", "-f", "-n", str(lines), str(log_file)])
+        except KeyboardInterrupt:
+            pass
+    else:
+        # show last N lines with colour coding
+        text = log_file.read_text(encoding="utf-8", errors="replace")
+        all_lines = text.splitlines()
+        recent = all_lines[-lines:] if len(all_lines) > lines else all_lines
+
+        for line in recent:
+            if "  WARNING  " in line or "ESCALAT" in line:
+                console.print(f"[yellow]{line}[/yellow]")
+            elif "  ERROR  " in line or "FAIL" in line or "✗" in line:
+                console.print(f"[red]{line}[/red]")
+            elif "PIPELINE DONE" in line or "COMPLETE" in line:
+                console.print(f"[green]{line}[/green]")
+            elif "ROUTER" in line:
+                console.print(f"[cyan]{line}[/cyan]")
+            else:
+                console.print(f"[dim]{line}[/dim]")
+
+        console.print(f"\n[dim]Showing last {len(recent)} of {len(all_lines)} lines. "
+                      f"Use --follow / -f to stream live.[/dim]")
 
 
 if __name__ == "__main__":

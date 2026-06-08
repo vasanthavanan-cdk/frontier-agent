@@ -11,6 +11,9 @@ from langchain_core.messages import SystemMessage, HumanMessage
 
 from ..state import AgentOutput, AgentState, TaskType
 from ..confidence import compute_confidence
+from ...logger import get_logger
+
+log = get_logger(__name__)
 
 
 def call_local_model(
@@ -26,6 +29,8 @@ def call_local_model(
     """
     model_tag = state.model_assignments.get(role, "gemma4:12b")
     attempt = state.retry_counts.get(role, 0) + 1
+
+    log.info("[%s] %s  model=%s  attempt=%d", state.task_id, role.upper(), model_tag, attempt)
 
     llm = ChatOllama(
         model=model_tag,
@@ -44,6 +49,13 @@ def call_local_model(
     output = AgentOutput(agent=role, content=content, attempt=attempt)
     confidence = compute_confidence(output, state.task_type, attempt)
     output.confidence = confidence
+
+    threshold = state.confidence_thresholds.get(role, state.confidence_thresholds.get("default", 0.70))
+    verdict = "PASS" if confidence >= threshold else "LOW "
+    log.info(
+        "[%s] %s  confidence=%.3f  threshold=%.2f  [%s]  output_tokens≈%d",
+        state.task_id, role.upper(), confidence, threshold, verdict, len(content) // 4,
+    )
 
     # track local tokens (rough estimate)
     state.token_usage.local_tokens += len(content) // 4

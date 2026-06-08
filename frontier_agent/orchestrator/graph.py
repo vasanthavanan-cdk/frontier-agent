@@ -20,17 +20,22 @@ from .nodes.premium import premium_node
 from .escalation import request_escalation
 from .router import after_planner, after_coder, after_reviewer, after_escalation
 from ..workflows.loader import load_workflow, apply_workflow
+from ..logger import get_logger
 
 console = Console()
+log = get_logger(__name__)
 
 
 def _escalation_node(state: AgentState) -> AgentState:
     """Wrap request_escalation so the graph can treat it as a normal node."""
+    log.warning("[%s] ESCALATION requested  reason=%s", state.task_id, state.escalation_reason or "low confidence")
     updated = request_escalation(state)
+    approved = updated.escalation_approved
+    log.warning("[%s] ESCALATION %s by user", state.task_id, "APPROVED" if approved else "DECLINED")
     return AgentState(**{
         **state.model_dump(),
         "escalation_requested": True,
-        "escalation_approved": updated.escalation_approved,
+        "escalation_approved": approved,
     })
 
 
@@ -111,9 +116,20 @@ def run(task: str, workflow_name: str = "default_coding") -> AgentState:
     if workflow:
         initial = apply_workflow(initial, workflow)
 
+    log.info("[%s] PIPELINE START  workflow=%s  task=%s", initial.task_id, workflow_name, task[:80])
+
     graph = build_graph()
     result = graph.invoke(initial)
     final = AgentState(**result) if isinstance(result, dict) else result
+
+    log.info(
+        "[%s] PIPELINE DONE  escalated=%s  local_tokens=%d  premium_tokens=%d  cost=$%.4f",
+        final.task_id,
+        final.escalation_approved,
+        final.token_usage.local_tokens,
+        final.token_usage.premium_tokens,
+        final.token_usage.premium_cost_usd,
+    )
 
     _print_summary(final)
     return final
