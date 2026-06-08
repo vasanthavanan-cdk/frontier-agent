@@ -1,3 +1,9 @@
+"""LangGraph pipeline: builds and runs the multi-agent graph for a single task.
+
+Graph topology: planner → coder → reviewer → (escalate?) → premium? → done
+Each node writes to AgentState; conditional edges (router.py) decide the next hop.
+Entry point for both the CLI and the MCP server is `run()`.
+"""
 from __future__ import annotations
 
 import uuid
@@ -19,6 +25,7 @@ console = Console()
 
 
 def _escalation_node(state: AgentState) -> AgentState:
+    """Wrap request_escalation so the graph can treat it as a normal node."""
     updated = request_escalation(state)
     return AgentState(**{
         **state.model_dump(),
@@ -28,6 +35,7 @@ def _escalation_node(state: AgentState) -> AgentState:
 
 
 def _done_node(state: AgentState) -> AgentState:
+    """Finalise output: fall back to the coder's content if premium never ran."""
     # if final_output not set by premium, compile from local outputs
     if not state.final_output:
         coder_out = state.agent_outputs.get("coder")
@@ -37,6 +45,7 @@ def _done_node(state: AgentState) -> AgentState:
 
 
 def build_graph() -> StateGraph:
+    """Compile and return the LangGraph StateGraph. Called once per `run()` invocation."""
     g = StateGraph(AgentState)
 
     g.add_node("planner", planner_node)
@@ -73,6 +82,12 @@ def build_graph() -> StateGraph:
 
 
 def run(task: str, workflow_name: str = "default_coding") -> AgentState:
+    """Execute the full pipeline for `task` and return the final AgentState.
+
+    Loads the named YAML workflow (falls back to defaults on missing file), seeds
+    AgentState, runs the compiled graph, prints a Rich summary, and returns the
+    completed state so callers (CLI, MCP server, benchmarks) can inspect results.
+    """
     console.print(Panel.fit(
         f"[bold green]Task:[/bold green] {task}\n"
         f"[dim]Workflow: {workflow_name}[/dim]",
@@ -105,6 +120,7 @@ def run(task: str, workflow_name: str = "default_coding") -> AgentState:
 
 
 def _print_summary(state: AgentState) -> None:
+    """Print a Rich panel showing token usage, cost, and escalation status."""
     usage = state.token_usage
     console.print()
     console.print(Panel.fit(

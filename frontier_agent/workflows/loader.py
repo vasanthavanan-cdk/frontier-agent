@@ -1,3 +1,10 @@
+"""YAML workflow loader: reads a definition file and applies it to AgentState.
+
+Two public functions:
+  - `load_workflow(name)` — find by name from the built-in definitions directory
+  - `load_workflow_file(path)` — load from an explicit path (used by CLI's `frontier workflows`)
+  - `apply_workflow(state, workflow)` — overlay WorkflowSpec config onto AgentState
+"""
 from __future__ import annotations
 
 from pathlib import Path
@@ -37,6 +44,7 @@ def load_workflow_file(path: Path | str) -> WorkflowSpec:
 
 
 def _parse(path: Path) -> WorkflowSpec:
+    """Read YAML from `path` and validate it into a WorkflowSpec."""
     with path.open() as f:
         data = yaml.safe_load(f)
     try:

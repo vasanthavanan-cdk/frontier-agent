@@ -1,3 +1,11 @@
+"""Behavioural confidence scoring for agent outputs.
+
+Scores are derived from observable signals (output completeness, hedging language,
+structural validity) rather than model self-reported probabilities, which are
+unreliable for instruction-tuned models.
+
+Public API: `compute_confidence(output, task_type, attempt) → float [0.0, 1.0]`
+"""
 from __future__ import annotations
 
 import re
@@ -18,6 +26,7 @@ _FUNCTION_PATTERN = re.compile(r"\bdef \w+\(|class \w+[:(]")
 
 
 def _check_completeness(output: AgentOutput, task_type: TaskType) -> float:
+    """Score 0-1 for whether the output looks substantively complete for its task type."""
     text = output.content.strip()
     if not text:
         return 0.0
@@ -46,6 +55,7 @@ def _check_hedging(output: AgentOutput) -> float:
 
 
 def _validate_structure(output: AgentOutput, task_type: TaskType) -> float:
+    """Score 0-1 for structural validity: balanced syntax for code, headers for docs."""
     if task_type == TaskType.coding:
         # try to parse code blocks
         blocks = _CODE_BLOCK_PATTERN.findall(output.content)
@@ -67,6 +77,11 @@ def compute_confidence(
     task_type: TaskType,
     attempt: int = 1,
 ) -> float:
+    """Return a composite confidence score in [0.0, 1.0].
+
+    Weights: completeness 40%, inverse-hedging 25%, structure 35%.
+    Each retry attempt subtracts 0.05 to reflect diminishing returns.
+    """
     completeness = _check_completeness(output, task_type)
     hedging_penalty = _check_hedging(output)
     structure = _validate_structure(output, task_type)

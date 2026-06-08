@@ -1,3 +1,9 @@
+"""Shared helper for all local-model agent nodes.
+
+`call_local_model` is the single call-site for Ollama inference. It builds
+the ChatOllama client from the workflow's model assignment for the given role,
+invokes the model, computes a confidence score, and accumulates local token counts.
+"""
 from __future__ import annotations
 
 from langchain_ollama import ChatOllama
@@ -13,6 +19,11 @@ def call_local_model(
     system_prompt: str,
     user_message: str,
 ) -> tuple[AgentOutput, float]:
+    """Call the Ollama model assigned to `role` and return (AgentOutput, confidence score).
+
+    The model tag is resolved from `state.model_assignments[role]`, so swapping
+    a model only requires a YAML edit — no code changes.
+    """
     model_tag = state.model_assignments.get(role, "gemma4:12b")
     attempt = state.retry_counts.get(role, 0) + 1
 

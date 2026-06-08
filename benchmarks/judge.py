@@ -1,3 +1,9 @@
+"""Automated benchmark judge using Gemma 4 12B as the evaluator.
+
+`judge(task, answer)` asks Gemma to score the answer 1-5 against the original
+prompt and quality hints, then returns (score, one-line reason). Using the same
+local model as the judge keeps evaluation cost at $0.
+"""
 from __future__ import annotations
 
 import re

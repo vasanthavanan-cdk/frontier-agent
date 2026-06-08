@@ -1,3 +1,9 @@
+"""Premium node: calls Claude after the human has explicitly approved escalation.
+
+This node only runs when `state.escalation_approved is True`. It passes the
+original request plus all local attempt outputs as context so Claude can build
+on the local work rather than starting from scratch.
+"""
 from __future__ import annotations
 
 from rich.console import Console

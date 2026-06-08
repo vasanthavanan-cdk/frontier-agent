@@ -1,3 +1,11 @@
+"""Benchmark runner: executes tasks from the suite against local and/or premium backends.
+
+Main entry point: `run_benchmark(categories, include_premium, premium_model) → BenchReport`
+Results are saved to benchmarks/results/latest.json and returned for further processing.
+
+BenchReport computes derived metrics (local resolution rate, cost savings) as properties
+so they stay consistent with the raw results at all times.
+"""
 from __future__ import annotations
 
 import json
@@ -19,6 +27,7 @@ _RESULTS_DIR = Path(__file__).parent / "results"
 
 @dataclass
 class TaskResult:
+    """Result for a single task run against one backend (local or premium)."""
     task_id: str
     category: str
     prompt: str
@@ -36,6 +45,7 @@ class TaskResult:
 
 @dataclass
 class BenchReport:
+    """Aggregated results for a full benchmark run with computed summary metrics."""
     results: list[TaskResult] = field(default_factory=list)
 
     # ── computed metrics ──────────────────────────────────────────────────
@@ -113,6 +123,7 @@ class BenchReport:
 
 
 def _run_local(task: BenchTask) -> TaskResult:
+    """Run one task through the Frontier Agent pipeline and score it with the judge."""
     from frontier_agent.orchestrator.graph import run as fa_run
 
     start = time.perf_counter()
@@ -144,6 +155,7 @@ def _run_local(task: BenchTask) -> TaskResult:
 
 
 def _run_premium(task: BenchTask, model: str = "claude-sonnet-4-5") -> TaskResult:
+    """Run one task directly against a Claude model for comparison scoring."""
     from langchain_anthropic import ChatAnthropic
     from langchain_core.messages import HumanMessage
 
@@ -177,6 +189,7 @@ def run_benchmark(
     premium_model: str = "claude-sonnet-4-5",
     save: bool = True,
 ) -> BenchReport:
+    """Run all (or filtered) benchmark tasks, print a Rich progress bar, and return a BenchReport."""
     tasks = TASKS
     if categories:
         tasks = [t for t in tasks if t.category.value in categories]

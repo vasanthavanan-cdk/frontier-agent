@@ -1,3 +1,8 @@
+"""Reviewer node: critiques the coder's output for correctness, edge cases, and security.
+
+Expected output format: VERDICT / ISSUES / SUMMARY. Low confidence here (e.g.
+NEEDS_REVISION with many issues) can trigger escalation via the router.
+"""
 from __future__ import annotations
 
 from rich.console import Console
@@ -22,6 +27,7 @@ SUMMARY: <one sentence overall assessment>"""
 
 
 def reviewer_node(state: AgentState) -> AgentState:
+    """LangGraph node: review the coder's output and record the verdict in state."""
     console.print("[dim]→ Reviewer checking output...[/dim]")
 
     coder_out = state.agent_outputs.get("coder")

@@ -1,3 +1,8 @@
+"""Shared state models for the LangGraph orchestration graph.
+
+AgentState is the single source of truth passed between every node in the graph.
+All fields use Pydantic v2 so LangGraph can merge partial updates from each node.
+"""
 from __future__ import annotations
 
 from enum import Enum
@@ -8,6 +13,7 @@ from pydantic import BaseModel, Field
 
 
 class TaskType(str, Enum):
+    """Canonical task categories used by the planner and confidence scorer."""
     coding = "coding"
     research = "research"
     review = "review"
@@ -18,6 +24,7 @@ class TaskType(str, Enum):
 
 
 class AgentOutput(BaseModel):
+    """One agent's response, including the raw content and computed confidence score."""
     agent: str
     content: str
     confidence: float = 0.0
@@ -25,12 +32,19 @@ class AgentOutput(BaseModel):
 
 
 class TokenUsage(BaseModel):
+    """Cumulative token counts and USD cost for one pipeline run."""
     local_tokens: int = 0
     premium_tokens: int = 0
     premium_cost_usd: float = 0.0
 
 
 class AgentState(BaseModel):
+    """Mutable graph state threaded through every node.
+
+    Fields marked with `operator.or_` as their reducer are dict-merged
+    by LangGraph when a node returns a partial update, so nodes only need
+    to write the keys they touch.
+    """
     task_id: str = ""
     original_input: str = ""
     workflow_name: str = "default_coding"

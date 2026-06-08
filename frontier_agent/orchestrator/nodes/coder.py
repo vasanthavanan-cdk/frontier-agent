@@ -1,3 +1,9 @@
+"""Coder node: generates a complete implementation based on the planner's output.
+
+Receives the plan from `state.agent_outputs["planner"]` and produces fenced
+code blocks. Enforces no-placeholder / no-TODO constraints via the system prompt;
+these are later verified by the confidence scorer.
+"""
 from __future__ import annotations
 
 from rich.console import Console
@@ -18,6 +24,7 @@ Rules:
 
 
 def coder_node(state: AgentState) -> AgentState:
+    """LangGraph node: implement the plan and write the result into state."""
     console.print("[dim]→ Coder implementing...[/dim]")
 
     plan = state.agent_outputs.get("planner")

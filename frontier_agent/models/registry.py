@@ -1,3 +1,10 @@
+"""Static registry of known Ollama models validated for Mac Mini M4 Pro 24 GB.
+
+REGISTRY maps Ollama tag → ModelInfo (size, speed, roles, description).
+ROLE_RECOMMENDATIONS maps role name → recommended specialist tag for `frontier models pull`.
+
+Only models in this registry are shown in `frontier models status`.
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -5,6 +12,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class ModelInfo:
+    """Static metadata for one Ollama model."""
     tag: str
     params_b: float        # billions of parameters
     size_gb: float         # disk size at Q4_K_M
@@ -57,8 +65,10 @@ ROLE_RECOMMENDATIONS: dict[str, str] = {
 
 
 def get(tag: str) -> ModelInfo | None:
+    """Return ModelInfo for `tag`, or None if not in the registry."""
     return REGISTRY.get(tag)
 
 
 def all_models() -> list[ModelInfo]:
+    """Return all registered models as a flat list."""
     return list(REGISTRY.values())

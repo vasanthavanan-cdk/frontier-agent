@@ -1,7 +1,9 @@
+"""Runtime configuration loaded from environment variables and .env file."""
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    """Application settings. All fields map to environment variables of the same name (uppercase)."""
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     ollama_base_url: str = "http://localhost:11434"

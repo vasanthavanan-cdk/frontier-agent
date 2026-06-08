@@ -1,3 +1,17 @@
+"""Frontier Agent CLI — Typer application exposing all user-facing commands.
+
+Commands:
+  frontier start            Bootstrap: install Ollama, start server, pull default model
+  frontier stop             Gracefully stop the Ollama server
+  frontier run              Run a task through the local agent pipeline
+  frontier status           Show Ollama version, server state, and downloaded models
+  frontier workflows        List available YAML workflow definitions
+  frontier models status    Show registry models with download state and disk usage
+  frontier models pull      Pull a recommended specialist model for a given role
+  frontier mcp-status       Health-check the MCP server end-to-end
+  frontier install-global   Symlink the CLI binary into a system PATH directory
+  frontier bench            Run the benchmark suite and write a Markdown report
+"""
 from __future__ import annotations
 
 import os
@@ -36,6 +50,7 @@ _DEFAULT_MODEL = "gemma4:12b"
 
 
 def _ollama_running() -> bool:
+    """Return True if Ollama is reachable on localhost:11434."""
     try:
         urllib.request.urlopen(_OLLAMA_URL, timeout=2)
         return True
@@ -44,6 +59,7 @@ def _ollama_running() -> bool:
 
 
 def _wait_for_ollama(timeout: int = 20) -> bool:
+    """Poll Ollama every second until it responds or `timeout` seconds elapse."""
     for _ in range(timeout):
         if _ollama_running():
             return True
@@ -593,6 +609,7 @@ def bench(
 
 
 def _write_md_report(report: "BenchReport") -> None:
+    """Serialise a BenchReport to a Markdown file under reports/."""
     from datetime import datetime
     from benchmarks.runner import BenchReport
 

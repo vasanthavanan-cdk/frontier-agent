@@ -1,3 +1,12 @@
+"""Human-in-the-loop escalation gate.
+
+Before any premium model is called, `request_escalation` prints a Rich panel
+showing per-step confidence scores vs thresholds and an estimated cost, then
+blocks on a y/N terminal prompt. The returned state carries `escalation_approved`.
+
+This gate cannot be bypassed — `require_human_approval: true` is enforced at
+schema load time (see workflows/schema.py::EscalationConfig).
+"""
 from __future__ import annotations
 
 from rich.console import Console
@@ -17,7 +26,7 @@ _CHARS_PER_TOKEN = 4
 
 
 def _estimate_tokens(state: AgentState) -> tuple[int, int]:
-    """Return (input_tokens, estimated_output_tokens)."""
+    """Estimate (input_tokens, output_tokens) from accumulated state content."""
     input_chars = len(state.original_input)
     for out in state.agent_outputs.values():
         input_chars += len(out.content)
@@ -27,6 +36,7 @@ def _estimate_tokens(state: AgentState) -> tuple[int, int]:
 
 
 def _confidence_bar(score: float, threshold: float, width: int = 20) -> str:
+    """Render a Rich-formatted block-character progress bar coloured by pass/fail."""
     filled = int(score * width)
     bar = "█" * filled + "░" * (width - filled)
     color = "green" if score >= threshold else "red"
