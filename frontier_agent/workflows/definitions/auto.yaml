@@ -1,0 +1,34 @@
+version: "1.0"
+name: "auto"
+description: "Auto-routing: detects intent at runtime and routes to web search (tool_agent) or local reasoning pipeline. Web search is the default; pure analytical tasks use local model only."
+
+models:
+  planner: "qwen2.5-coder:7b"
+  coder: "qwen2.5-coder:7b"
+  reviewer: "qwen2.5-coder:7b"
+  documenter: "qwen2.5-coder:7b"
+  fallback_premium: "claude-sonnet-4-5"
+
+confidence_thresholds:
+  planner: 0.70
+  coder: 0.75
+  reviewer: 0.78
+  documenter: 0.65
+  default: 0.70
+
+escalation:
+  require_human_approval: true
+  max_local_retries: 2
+
+research:
+  # These flags are placeholders — intent_router_node overrides them at runtime.
+  # Web search is default; local-only for pure reasoning (algorithms, math, concepts).
+  enabled: false
+  max_sources: 5
+  tool_calling: false
+
+steps:
+  - id: route
+    agent: planner
+    input_template: "{{user_task}}"
+    output_key: route

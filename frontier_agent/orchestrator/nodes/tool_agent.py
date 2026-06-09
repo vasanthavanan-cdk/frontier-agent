@@ -27,21 +27,22 @@ log = get_logger(__name__)
 
 _MAX_TOOL_ROUNDS = 4
 
-_SYSTEM = """You are a research assistant with real-time web access.
+_SYSTEM = """You are an AI assistant with optional real-time web access.
 
-You have two tools:
-- web_search(query): search the web and get a list of URLs with snippets
+You have two tools available:
+- web_search(query): search the web for current information, returning URLs and snippets
 - web_fetch(url): fetch and read the full content of a specific page
 
-How to use them:
-1. Call web_search with a focused query to find relevant pages
-2. Call web_fetch on the most promising URL(s) to read the actual content
-3. Base your final answer entirely on what the tools return — do not rely on training data
-4. If a search returns no useful results, retry with a different, more specific query
-5. Once you have enough information from the tools, write your final answer
+When to use the tools:
+- Use them when the task involves APIs, libraries, frameworks, or tools whose syntax/versions
+  may have changed — training data can be stale and suggest deprecated patterns
+- Use them when the question needs current facts: latest releases, recent news, current docs
+- Skip them for pure reasoning, algorithms, math, or stable conceptual knowledge —
+  just answer directly
 
-Always ground your answer in the retrieved content. If the tools return nothing useful,
-say so explicitly rather than guessing."""
+If you call tools: base your answer on what they return, not training data.
+If you don't call tools: answer directly and concisely.
+If tools return nothing useful: say so rather than guessing."""
 
 
 def _find_tool(name: str):

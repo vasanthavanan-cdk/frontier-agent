@@ -18,12 +18,18 @@ from ..orchestrator.state import AgentState
 _BUILTIN_DIR = Path(__file__).parent / "definitions"
 
 
-def load_workflow(name: str) -> WorkflowSpec:
+def load_workflow(name: str) -> WorkflowSpec | None:
     """Load a workflow by name from the definitions directory.
+
+    Returns None for "auto" — routing flags are set dynamically at runtime by
+    intent_router_node and do not come from a YAML file.
 
     Searches: definitions/<name>.yaml → definitions/default_<name>.yaml
     Raises FileNotFoundError or ValidationError with clear messages.
     """
+    if name == "auto":
+        return None
+
     candidates = [
         _BUILTIN_DIR / f"{name}.yaml",
         _BUILTIN_DIR / f"default_{name}.yaml",

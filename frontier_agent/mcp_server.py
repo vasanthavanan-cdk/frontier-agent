@@ -58,8 +58,13 @@ async def list_tools() -> list[Tool]:
                     },
                     "workflow": {
                         "type": "string",
-                        "description": "Workflow to use: coding | research | review. Defaults to coding.",
-                        "default": "coding",
+                        "description": "Workflow: auto (default) | coding | research | review. 'auto' detects intent — web search for APIs/current facts, local model for pure reasoning.",
+                        "default": "auto",
+                    },
+                    "fallback_model": {
+                        "type": "string",
+                        "description": "Optional: premium model to use if escalation is needed (e.g. 'claude-opus-4-8'). Leave empty to let the calling AI handle escalation.",
+                        "default": "",
                     },
                 },
                 "required": ["task"],
@@ -111,16 +116,17 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
 async def _handle_run_task(args: dict) -> list[TextContent]:
     task = args.get("task", "").strip()
-    workflow = args.get("workflow", "coding")
+    workflow = args.get("workflow", "auto")
+    fallback_model = args.get("fallback_model", "").strip()
 
     if not task:
         return [TextContent(type="text", text="Error: 'task' is required.")]
 
-    log.info("run_task  workflow=%s  task=%s", workflow, task[:120])
+    log.info("run_task  workflow=%s  fallback=%s  task=%s", workflow, fallback_model or "caller", task[:120])
 
     # run in a thread — LangGraph graph is synchronous
     loop = asyncio.get_event_loop()
-    result = await loop.run_in_executor(None, _run_pipeline, task, workflow)
+    result = await loop.run_in_executor(None, _run_pipeline, task, workflow, fallback_model)
 
     _results[result["task_id"]] = result
     log.info("run_task COMPLETE  task_id=%s  escalated=%s  cost=$%.4f",
@@ -145,6 +151,10 @@ async def _handle_run_task(args: dict) -> list[TextContent]:
         f"**Task ID**: `{result['task_id']}`",
         f"**Workflow**: {result['workflow']}",
         recommendation,
+    ]
+    if result.get("intent_assumption"):
+        lines.append(f"\n> 💡 {result['intent_assumption']}\n")
+    lines += [
         f"**Local tokens**: {result['local_tokens']:,}  |  "
         f"**Cost**: ${result['premium_cost_usd']:.4f} USD (local model is free)",
         "",
@@ -158,6 +168,25 @@ async def _handle_run_task(args: dict) -> list[TextContent]:
         "",
         result["output"],
     ]
+
+    # Richer escalation context for the calling AI to act on
+    if recommended:
+        failing = {
+            k: v for k, v in result.get("confidence_scores", {}).items()
+            if v < result.get("confidence_thresholds", {}).get(k, 0.70)
+        }
+        if failing:
+            details = "\n".join(
+                f"  • {step}: {score:.2f} (threshold {result['confidence_thresholds'].get(step, 0.70):.2f})"
+                for step, score in failing.items()
+            )
+            lines += [
+                "",
+                "---",
+                "**Escalation details** (for the calling AI):",
+                f"```\n{details}\n```",
+                "The local draft above is a starting point. Improve it using your own capabilities.",
+            ]
 
     return [TextContent(type="text", text="\n".join(lines))]
 
@@ -259,15 +288,21 @@ async def _handle_get_result(args: dict) -> list[TextContent]:
 
 # ── pipeline runner (sync, called in executor) ────────────────────────────────
 
-def _run_pipeline(task: str, workflow: str) -> dict:
+def _run_pipeline(task: str, workflow: str, fallback_model: str = "") -> dict:
     from .orchestrator.graph import run
+    from .config import settings
 
     # Headless: no human prompt, no premium API call. Escalation becomes a
     # recommendation for the caller (Claude) to act on. Redirect stdout to
     # stderr for the duration so any Rich output can't corrupt the MCP stdio
     # JSON-RPC channel (which owns stdout).
     with contextlib.redirect_stdout(sys.stderr):
-        state = run(task=task, workflow_name=workflow, interactive=False)
+        state = run(
+            task=task,
+            workflow_name=workflow,
+            interactive=False,
+            fallback_model=fallback_model or settings.fallback_model or "",
+        )
 
     return {
         "task_id": state.task_id,
@@ -281,6 +316,7 @@ def _run_pipeline(task: str, workflow: str) -> dict:
         "escalation_recommended": state.escalation_requested and not state.escalation_approved,
         "escalation_reason": state.escalation_reason,
         "fallback_premium_model": state.fallback_premium_model,
+        "intent_assumption": state.intent_assumption,
         "local_tokens": state.token_usage.local_tokens,
         "premium_tokens": state.token_usage.premium_tokens,
         "premium_cost_usd": state.token_usage.premium_cost_usd,

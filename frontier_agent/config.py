@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     # Optional: SearXNG base URL (e.g. http://localhost:8080). When set,
     # SearXNG is used as the primary search backend (self-hosted, no rate limits).
     searxng_base_url: str = ""
+    # Optional: premium fallback model when escalation is triggered via MCP.
+    # Leave empty to let the calling AI (Claude Code, Copilot, etc.) handle it.
+    fallback_model: str = ""
     escalation_threshold: float = 0.70
     max_local_retries: int = 2
 

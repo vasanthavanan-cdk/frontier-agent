@@ -101,3 +101,6 @@ class AgentState(BaseModel):
 
     # tool calling: model drives search/fetch itself via Ollama tool calling
     tool_calling_enabled: bool = False
+
+    # auto-routing: note appended to MCP output when intent was inferred
+    intent_assumption: str = ""
