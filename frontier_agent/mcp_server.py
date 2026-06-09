@@ -40,7 +40,7 @@ async def list_tools() -> list[Tool]:
             name="run_task",
             description=(
                 "Run a task through the Frontier Agent local pipeline. "
-                "Uses Gemma 4 12B locally — escalates to a premium model only if "
+                "Uses qwen2.5-coder:7b locally — escalates to a premium model only if "
                 "confidence is below threshold AND the user approves. "
                 "Returns the output, confidence scores, whether it was escalated, "
                 "and token usage. Use this before spending your own tokens."
