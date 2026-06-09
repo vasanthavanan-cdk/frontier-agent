@@ -28,8 +28,25 @@ log = get_logger(__name__)
 
 
 def _escalation_node(state: AgentState) -> AgentState:
-    """Wrap request_escalation so the graph can treat it as a normal node."""
-    log.warning("[%s] ESCALATION requested  reason=%s", state.task_id, state.escalation_reason or "low confidence")
+    """Wrap request_escalation so the graph can treat it as a normal node.
+
+    In headless mode (MCP / Claude-driven) there is no terminal to prompt and no
+    Anthropic API key to call, so we skip the human gate entirely and simply
+    record that escalation is *recommended* — the caller (Claude) decides whether
+    to take over.
+    """
+    reason = state.escalation_reason or "Confidence below threshold after max retries"
+    log.warning("[%s] ESCALATION requested  reason=%s", state.task_id, reason)
+
+    if not state.interactive:
+        log.warning("[%s] ESCALATION recommended (headless — deferring to caller)", state.task_id)
+        return AgentState(**{
+            **state.model_dump(),
+            "escalation_requested": True,
+            "escalation_approved": False,
+            "escalation_reason": reason,
+        })
+
     updated = request_escalation(state)
     approved = updated.escalation_approved
     log.warning("[%s] ESCALATION %s by user", state.task_id, "APPROVED" if approved else "DECLINED")
@@ -90,25 +107,31 @@ def build_graph() -> StateGraph:
     return g.compile()
 
 
-def run(task: str, workflow_name: str = "default_coding") -> AgentState:
+def run(task: str, workflow_name: str = "default_coding", interactive: bool = True) -> AgentState:
     """Execute the full pipeline for `task` and return the final AgentState.
 
     Loads the named YAML workflow (falls back to defaults on missing file), seeds
     AgentState, runs the compiled graph, prints a Rich summary, and returns the
     completed state so callers (CLI, MCP server, benchmarks) can inspect results.
+
+    `interactive=True` (CLI) shows Rich panels and prompts before escalating.
+    `interactive=False` (MCP / Claude-driven) runs headless: no panels, no human
+    prompt, no premium API call — escalation is surfaced as a recommendation.
     """
-    console.print(Panel.fit(
-        f"[bold green]Task:[/bold green] {task}\n"
-        f"[dim]Workflow: {workflow_name}[/dim]",
-        title="[bold]Frontier Agent[/bold]",
-        border_style="green",
-    ))
+    if interactive:
+        console.print(Panel.fit(
+            f"[bold green]Task:[/bold green] {task}\n"
+            f"[dim]Workflow: {workflow_name}[/dim]",
+            title="[bold]Frontier Agent[/bold]",
+            border_style="green",
+        ))
 
     # load workflow config and overlay onto initial state
     try:
         workflow = load_workflow(workflow_name)
     except FileNotFoundError:
-        console.print(f"[yellow]Warning: workflow '{workflow_name}' not found, using defaults.[/yellow]")
+        if interactive:
+            console.print(f"[yellow]Warning: workflow '{workflow_name}' not found, using defaults.[/yellow]")
         workflow = None
 
     initial = AgentState(
@@ -116,6 +139,7 @@ def run(task: str, workflow_name: str = "default_coding") -> AgentState:
         original_input=task,
         workflow_name=workflow_name,
         token_usage=TokenUsage(),
+        interactive=interactive,
     )
     if workflow:
         initial = apply_workflow(initial, workflow)
@@ -135,7 +159,8 @@ def run(task: str, workflow_name: str = "default_coding") -> AgentState:
         final.token_usage.premium_cost_usd,
     )
 
-    _print_summary(final)
+    if interactive:
+        _print_summary(final)
     return final
 
 

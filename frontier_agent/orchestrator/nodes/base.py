@@ -80,8 +80,14 @@ def research_preamble(state: AgentState) -> str:
         return ""
     sources = "\n".join(f"  - {s}" for s in state.research_sources[:6])
     return (
-        f"\n=== RESEARCH BRIEF (live web sources, {len(state.research_sources)} pages) ===\n"
+        f"\n=== RESEARCH BRIEF (live web content already retrieved for this task, "
+        f"{len(state.research_sources)} pages) ===\n"
         f"{state.research_context}\n"
         f"Sources consulted:\n{sources}\n"
         f"=== END RESEARCH BRIEF ===\n\n"
+        "The research brief above was fetched from the web specifically for this "
+        "task — treat it as your source of truth and base your answer on it. Do NOT "
+        "say you lack internet access or real-time data; the information has already "
+        "been gathered for you above. If the brief does not actually contain what was "
+        "asked, state plainly what it does and does not cover rather than refusing.\n\n"
     )

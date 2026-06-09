@@ -13,8 +13,10 @@ Tools exposed:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 from mcp.server import Server
@@ -39,11 +41,13 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="run_task",
             description=(
-                "Run a task through the Frontier Agent local pipeline. "
-                "Uses qwen2.5-coder:7b locally — escalates to a premium model only if "
-                "confidence is below threshold AND the user approves. "
-                "Returns the output, confidence scores, whether it was escalated, "
-                "and token usage. Use this before spending your own tokens."
+                "Run a task through the Frontier Agent local pipeline (free, runs "
+                "locally on qwen2.5-coder:7b). Use this FIRST for coding and "
+                "factual-lookup tasks to avoid doing the work yourself. Returns the "
+                "local output, per-step confidence scores, and an escalation "
+                "recommendation: if 'escalation_recommended' is set, the local "
+                "confidence was low — review the draft and answer the request "
+                "yourself if it is not good enough; otherwise relay the output as-is."
             ),
             inputSchema={
                 "type": "object",
@@ -122,14 +126,27 @@ async def _handle_run_task(args: dict) -> list[TextContent]:
     log.info("run_task COMPLETE  task_id=%s  escalated=%s  cost=$%.4f",
              result["task_id"], result["escalated"], result["premium_cost_usd"])
 
+    recommended = result.get("escalation_recommended", False)
+    if recommended:
+        recommendation = (
+            f"**⚠ Escalation recommended**: the local model's confidence was below "
+            f"threshold ({result.get('escalation_reason', 'low confidence')}). "
+            f"Treat the output below as a draft — review it and, if it is not good "
+            f"enough, answer the original request yourself rather than relaying it."
+        )
+    else:
+        recommendation = (
+            "**✓ Local result is confident** — it can be relayed as-is; no need to "
+            "redo it yourself."
+        )
+
     lines = [
         "## Frontier Agent Result",
         f"**Task ID**: `{result['task_id']}`",
         f"**Workflow**: {result['workflow']}",
-        f"**Escalated to premium**: {'Yes ⚠' if result['escalated'] else 'No ✓'}",
+        recommendation,
         f"**Local tokens**: {result['local_tokens']:,}  |  "
-        f"**Premium tokens**: {result['premium_tokens']:,}  |  "
-        f"**Cost**: ${result['premium_cost_usd']:.4f} USD",
+        f"**Cost**: ${result['premium_cost_usd']:.4f} USD (local model is free)",
         "",
         "### Pipeline Trace",
         "",
@@ -245,7 +262,13 @@ async def _handle_get_result(args: dict) -> list[TextContent]:
 def _run_pipeline(task: str, workflow: str) -> dict:
     from .orchestrator.graph import run
 
-    state = run(task=task, workflow_name=workflow)
+    # Headless: no human prompt, no premium API call. Escalation becomes a
+    # recommendation for the caller (Claude) to act on. Redirect stdout to
+    # stderr for the duration so any Rich output can't corrupt the MCP stdio
+    # JSON-RPC channel (which owns stdout).
+    with contextlib.redirect_stdout(sys.stderr):
+        state = run(task=task, workflow_name=workflow, interactive=False)
+
     return {
         "task_id": state.task_id,
         "workflow": state.workflow_name,
@@ -255,6 +278,7 @@ def _run_pipeline(task: str, workflow: str) -> dict:
         "model_assignments": state.model_assignments,
         "retry_counts": state.retry_counts,
         "escalated": state.escalation_approved,
+        "escalation_recommended": state.escalation_requested and not state.escalation_approved,
         "escalation_reason": state.escalation_reason,
         "fallback_premium_model": state.fallback_premium_model,
         "local_tokens": state.token_usage.local_tokens,

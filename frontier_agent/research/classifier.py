@@ -36,6 +36,19 @@ _CURRENT_FACTS_PATTERNS = re.compile(
     re.IGNORECASE,
 )
 
+# Explicit requests to retrieve from the web, regardless of recency. These are
+# retrieval tasks ("look this up for me") even when no current-facts keyword
+# appears — e.g. "find information about <person>".
+_EXPLICIT_RETRIEVAL_PATTERNS = re.compile(
+    r"\bsearch\s+(?:the\s+)?(?:internet|web|online|google)\b"
+    r"|\b(?:from|on)\s+(?:the\s+)?(?:internet|web)\b"
+    r"|\blook\s*up\b"
+    r"|\bfind\s+(?:me\s+)?(?:some\s+)?info(?:rmation)?\b"
+    r"|\bget\s+(?:me\s+)?(?:some\s+)?info(?:rmation)?\b"
+    r"|\bwho\s+is\b|\bwho\s+was\b",
+    re.IGNORECASE,
+)
+
 # "version" + a question framing ("what", "which", "latest") is a strong signal.
 _VERSION_QUESTION_RE = re.compile(
     r"\b(version|release)\b.*\b(latest|current|newest|what|which|now)\b"
@@ -52,7 +65,11 @@ def classify_intent(task: str) -> str:
     answer plausibly depends on live external state.
     """
     text = task.strip()
-    if _CURRENT_FACTS_PATTERNS.search(text) or _VERSION_QUESTION_RE.search(text):
+    if (
+        _CURRENT_FACTS_PATTERNS.search(text)
+        or _VERSION_QUESTION_RE.search(text)
+        or _EXPLICIT_RETRIEVAL_PATTERNS.search(text)
+    ):
         log.debug("Intent: current_facts — %s", text[:80])
         return "current_facts"
     log.debug("Intent: reasoning — %s", text[:80])

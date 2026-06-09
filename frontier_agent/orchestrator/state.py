@@ -86,6 +86,12 @@ class AgentState(BaseModel):
     max_local_retries: int = 2
     fallback_premium_model: str = "claude-sonnet-4-5"
 
+    # Interactive mode (CLI) shows Rich panels and prompts the human before
+    # escalating. Headless mode (MCP / Claude-driven) skips the prompt and the
+    # premium API call, instead surfacing an escalation recommendation for the
+    # caller (Claude) to act on.
+    interactive: bool = True
+
     # web research (populated by researcher_node when research_enabled=True)
     research_enabled: bool = False
     research_max_sources: int = 5
