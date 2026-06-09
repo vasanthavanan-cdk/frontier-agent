@@ -6,41 +6,21 @@ coder, reviewer) works from the same grounded, sourced context.
 from __future__ import annotations
 
 from langchain_ollama import ChatOllama
-from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.messages import HumanMessage
 
 from ..logger import get_logger
 
 log = get_logger(__name__)
 
-_SYSTEM = """You are a technical research synthesizer. Given a task and raw content from multiple
-web sources, produce a concise, structured Research Brief.
-
-Format your output EXACTLY as:
-
-KEY FACTS:
-- <fact 1 — specific, verifiable, with version/date if available>
-- <fact 2>
-...
-
-CURRENT BEST PRACTICES:
-- <practice 1>
-- <practice 2>
-...
-
-IMPORTANT CAUTIONS:
-- <deprecation, breaking change, or known gotcha>
-(write "None found" if nothing notable)
-
-OFFICIAL SOURCES:
-- <URL 1>
-- <URL 2>
-...
-
-Rules:
-- Only include what was actually found in the provided sources
-- Prefer specifics (version numbers, API names, method signatures) over generalities
-- Flag anything that might be outdated or version-specific
-- Max 400 words total"""
+_PROMPT_TMPL = (
+    "Read the source content below and write a research brief for the question.\n"
+    "Format:\nKEY FACTS:\n- (specific facts, version numbers, dates from sources)\n\n"
+    "CURRENT BEST PRACTICES:\n- (recommended patterns)\n\n"
+    "IMPORTANT CAUTIONS:\n- (deprecations or breaking changes; write 'None' if none)\n\n"
+    "OFFICIAL SOURCES:\n- (URLs)\n\n"
+    "Rules: only use facts from the provided sources. Max 300 words.\n\n"
+    "QUESTION: {task}\n\nSOURCE CONTENT:\n{content}"
+)
 
 # how much source content to pass to the synthesizer per page
 _CHARS_PER_SOURCE = 2500
@@ -77,10 +57,10 @@ def synthesize(task: str, sources: list[dict], model: str = "gemma4:12b") -> str
             base_url="http://localhost:11434",
             temperature=0.1,
             num_predict=1024,
+            keep_alive="10m",
         )
         response = llm.invoke([
-            SystemMessage(content=_SYSTEM),
-            HumanMessage(content=f"TASK: {task}\n\nSOURCE CONTENT:\n{combined}"),
+            HumanMessage(content=_PROMPT_TMPL.format(task=task, content=combined)),
         ])
         brief = response.content.strip()
         log.info("Research brief generated: %d chars", len(brief))

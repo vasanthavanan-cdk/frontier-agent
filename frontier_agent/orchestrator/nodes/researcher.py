@@ -40,22 +40,38 @@ def researcher_node(state: AgentState) -> AgentState:
 
         # 1 — generate targeted queries
         queries = generate_queries(state.original_input, model=model)
+        if not queries:
+            log.warning("[%s] RESEARCH query generation returned empty list — continuing without context", state.task_id)
+            console.print("[dim]  No queries generated — proceeding without web context.[/dim]")
+            return state
+
         log.info("[%s] RESEARCH queries=%s", state.task_id, queries)
         console.print(f"[dim]  Queries: {', '.join(queries[:2])}{'...' if len(queries) > 2 else ''}[/dim]")
 
         # 2 — search the web
-        search_results = search(queries, max_results_per_query=max(2, state.research_max_sources // len(queries)))
+        per_query = max(2, state.research_max_sources // len(queries))
+        search_results = search(queries, max_results_per_query=per_query)
         urls = [r["url"] for r in search_results]
         log.info("[%s] RESEARCH found %d candidate URLs", state.task_id, len(urls))
 
-        # 3 — fetch and extract content
+        # 3 — fetch and extract content; fall back to search snippets for JS-heavy pages
         fetched = fetch_all(urls, max_fetch=state.research_max_sources)
         log.info("[%s] RESEARCH fetched %d pages successfully", state.task_id, len(fetched))
 
         if not fetched:
-            log.warning("[%s] RESEARCH no content fetched — continuing without context", state.task_id)
-            console.print("[dim]  No pages fetched — proceeding without web context.[/dim]")
-            return state
+            # use search snippets as lightweight fallback
+            snippet_sources = [
+                {"url": r["url"], "content": f"{r['title']}\n{r['snippet']}"}
+                for r in search_results
+                if r.get("snippet")
+            ][:state.research_max_sources]
+            if snippet_sources:
+                log.info("[%s] RESEARCH using %d search snippets as fallback", state.task_id, len(snippet_sources))
+                fetched = snippet_sources
+            else:
+                log.warning("[%s] RESEARCH no content fetched — continuing without context", state.task_id)
+                console.print("[dim]  No pages fetched — proceeding without web context.[/dim]")
+                return state
 
         # 4 — synthesize into a research brief
         brief = synthesize(state.original_input, fetched, model=model)

@@ -2,26 +2,17 @@
 from __future__ import annotations
 
 from langchain_ollama import ChatOllama
-from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.messages import HumanMessage
 
 from ..logger import get_logger
 
 log = get_logger(__name__)
 
-_SYSTEM = """You are a research query specialist. Given a task or question, generate 3-4 targeted
-web search queries to find the most current and authoritative information.
-
-Focus on:
-- Official documentation and changelogs
-- Best practices and patterns (2024/2025)
-- Known issues, deprecations, migration guides
-- Authoritative tutorials from primary sources
-
-Rules:
-- Output ONLY the queries, one per line
-- No numbering, bullets, or explanation
-- Each query should target a different angle (docs, examples, best practices, pitfalls)
-- Include version numbers or years when relevant to the task"""
+_PROMPT_TMPL = (
+    "Generate 3 Google search queries for the following question. "
+    "Output ONLY the queries, one per line, no other text.\n\n"
+    "Question: {task}\n\nQueries:"
+)
 
 
 def generate_queries(task: str, model: str = "gemma4:12b") -> list[str]:
@@ -31,12 +22,12 @@ def generate_queries(task: str, model: str = "gemma4:12b") -> list[str]:
         llm = ChatOllama(
             model=model,
             base_url="http://localhost:11434",
-            temperature=0.2,
-            num_predict=256,
+            temperature=0.1,
+            num_predict=512,
+            keep_alive="10m",
         )
         response = llm.invoke([
-            SystemMessage(content=_SYSTEM),
-            HumanMessage(content=task),
+            HumanMessage(content=_PROMPT_TMPL.format(task=task)),
         ])
         queries = [
             q.strip()

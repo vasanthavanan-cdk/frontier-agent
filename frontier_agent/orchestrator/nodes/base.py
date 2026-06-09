@@ -36,7 +36,8 @@ def call_local_model(
         model=model_tag,
         base_url="http://localhost:11434",
         temperature=0.2,
-        num_predict=4096,
+        num_predict=2048,
+        keep_alive="10m",
     )
 
     messages = [

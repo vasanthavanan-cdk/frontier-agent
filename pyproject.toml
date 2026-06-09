@@ -20,7 +20,7 @@ dependencies = [
     "anthropic>=0.40",
     "pyyaml>=6.0",
     "mcp>=1.0",
-    "duckduckgo-search>=6.0",
+    "ddgs>=0.3",
     "trafilatura>=1.9",
 ]
 

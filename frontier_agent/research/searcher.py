@@ -28,10 +28,13 @@ def search(queries: list[str], max_results_per_query: int = 4) -> list[dict]:
     Returns list of {url, title, snippet} dicts.
     """
     try:
-        from duckduckgo_search import DDGS
+        from ddgs import DDGS
     except ImportError:
-        log.error("duckduckgo-search not installed — run: pip install duckduckgo-search")
-        return []
+        try:
+            from duckduckgo_search import DDGS
+        except ImportError:
+            log.error("ddgs not installed — run: pip install ddgs")
+            return []
 
     seen_urls: set[str] = set()
     results: list[dict] = []
