@@ -8,19 +8,23 @@ Built to reduce Claude token consumption and GitHub Copilot AI credit usage with
 
 ## How It Works
 
+The pipeline has two paths depending on the workflow:
+
+### Coding / Review workflow
+
 ```
 Your Task
    │
    ▼
-Planner (Qwen2.5-Coder 7B)          ← classifies task, decomposes into steps
+Planner (Qwen2.5-Coder 7B)     ← decomposes task into steps
    │
    ▼
-Coder / Researcher / Reviewer  ← local specialist agents
+Coder (Qwen2.5-Coder 7B)       ← implements the plan
    │
    ▼
-Confidence Scorer              ← behavioural signals, not model self-report
+Confidence Scorer               ← behavioural signals, not model self-report
    │
-   ├── score ≥ threshold ──────► Return output  ($0.00)
+   ├── score ≥ threshold ──────► Reviewer → Return output  ($0.00)
    │
    └── score < threshold ──────► Escalation Gate (YOU decide)
                                         │
@@ -29,6 +33,22 @@ Confidence Scorer              ← behavioural signals, not model self-report
                                    Yes  ▼
                                   Claude / GPT
 ```
+
+### Research workflow (tool calling)
+
+```
+Your Task
+   │
+   ▼
+Tool Agent (Qwen2.5-Coder 7B)  ← model calls web_search / web_fetch tools
+   │   ↑                           itself (up to 4 rounds) to find live data
+   └───┘  tool results fed back
+   │
+   ▼
+Reviewer → Return output  ($0.00)
+```
+
+The research workflow uses **Ollama tool calling** — the model decides what to search and fetch instead of relying on a pre-classifier. Results flow back as tool messages, grounding the answer in live web content.
 
 No premium model is called without a blocking prompt showing you the confidence breakdown, reason, and estimated cost.
 
@@ -98,12 +118,9 @@ That's it. `frontier start` handles the rest:
 ## CLI Usage
 
 ```bash
-# Run any task (auto-detects workflow)
-frontier run "Refactor this auth module to use JWT"
-
-# Choose a workflow explicitly
+# Run any task — choose workflow explicitly
 frontier run --workflow coding   "Add unit tests for UserService"
-frontier run --workflow research "Explain the CAP theorem"
+frontier run --workflow research "What is the latest stable version of Node.js?"
 frontier run --workflow review   "Review this middleware for security issues"
 
 # System status
@@ -117,6 +134,10 @@ frontier models status          # show registry — downloaded vs available
 frontier models pull coding     # pull qwen2.5-coder:14b if coding quality is lacking
 frontier models pull reasoning  # pull deepseek-r1:14b for complex reasoning
 
+# View pipeline logs
+frontier logs                   # last 50 lines
+frontier logs --follow          # stream live (like tail -f)
+
 # Benchmarking
 frontier bench                  # run 5-task mini-bench locally
 frontier bench --premium        # compare against Claude (requires ANTHROPIC_API_KEY)
@@ -125,9 +146,61 @@ frontier bench --category coding
 
 ---
 
+## Web Research & Tool Calling
+
+The `research` workflow gives the model live web access via **Ollama tool calling**. qwen2.5-coder:7b calls `web_search` and `web_fetch` tools during generation — no fixed pre-classifier, no pre-synthesized brief.
+
+```
+frontier run --workflow research "what is the latest stable version of Python?"
+# Watch the console:
+#   → Tool Agent searching the web...
+#   ↳ web_search(query='latest stable Python version 2025')
+#   ✓ Tool Agent done — 1 tool round(s), confidence=0.74
+```
+
+### Search backends (priority order)
+
+| Backend | Setup | Cost | Notes |
+|---------|-------|------|-------|
+| **SearXNG** | Docker (15 min) | Free | Recommended — self-hosted, aggregates 70+ engines, no rate limits |
+| **Tavily** | API key | Free tier | 1,000 searches/month free |
+| **DuckDuckGo** | None | Free | Default fallback, scraping-based |
+
+**To enable SearXNG** (recommended for production use):
+
+```bash
+# Start SearXNG locally
+docker run -d -p 8080:8080 searxng/searxng
+
+# Add to .env
+SEARXNG_BASE_URL=http://localhost:8080
+```
+
+The agent routes automatically — SearXNG when running, Tavily if API key set, DuckDuckGo as fallback.
+
+### View tool call trace
+
+```bash
+frontier logs --follow
+# or filter to tool calls only:
+tail -f ~/.frontier/mcp.log | grep -E "TOOL_CALL|TOOL_AGENT"
+```
+
+---
+
 ## Connect to Your AI Agent
 
 Frontier Agent implements the **Model Context Protocol (MCP)** over stdio. Any MCP-compatible agent can use it as a tool — route tasks through the local pipeline before spending cloud tokens.
+
+### Claude Code CLI
+
+```bash
+claude mcp add frontier-agent -- \
+  /absolute/path/to/frontier-agent/.venv/bin/python \
+  -m frontier_agent.mcp_server
+```
+
+Frontier Agent tools will appear automatically in any Claude Code session.
 
 ### GitHub Copilot (VS Code)
 
@@ -148,30 +221,6 @@ The `.vscode/mcp.json` file is already included in this repo:
 ```
 
 Open VS Code in this project folder and Copilot will detect the server automatically. In Copilot Chat, switch to **Agent mode** (`@` menu) and `frontier-agent` will appear as a tool.
-
-To enable it globally for all projects, add to your VS Code `settings.json`:
-
-```json
-"mcp": {
-  "servers": {
-    "frontier-agent": {
-      "type": "stdio",
-      "command": "/absolute/path/to/frontier-agent/.venv/bin/python",
-      "args": ["-m", "frontier_agent.mcp_server"]
-    }
-  }
-}
-```
-
-### Claude Code CLI
-
-```bash
-claude mcp add frontier-agent -- \
-  /absolute/path/to/frontier-agent/.venv/bin/python \
-  -m frontier_agent.mcp_server
-```
-
-Frontier Agent tools will appear automatically in any Claude Code session.
 
 ### Cursor
 
@@ -261,7 +310,7 @@ When local confidence falls below threshold after retries, you get a blocking pr
 │                                                           │
 ╰───────────────────────────────────────────────────────────╯
 ╭──────────────────── Cost Estimate ────────────────────────╮
-│  Local model        qwen2.5-coder:7b                            │
+│  Local model        qwen2.5-coder:7b                      │
 │  Escalation target  claude-sonnet-4-5                     │
 │  Reason             Confidence below threshold after      │
 │                     2 retry attempts                      │
@@ -297,6 +346,14 @@ escalation:
   max_local_retries: 2
 ```
 
+```yaml
+# frontier_agent/workflows/definitions/default_research.yaml
+research:
+  enabled: true
+  max_sources: 6
+  tool_calling: true    # model calls web_search/web_fetch tools itself
+```
+
 ---
 
 ## Model Stack
@@ -319,27 +376,44 @@ Maximum realistic footprint: **~27 GB** (vs ~140 GB if all were pre-downloaded).
 ```
 frontier-agent/
 ├── frontier_agent/
-│   ├── cli.py                    # Typer CLI — frontier run/status/models/bench
+│   ├── cli.py                    # Typer CLI — frontier run/status/models/bench/logs
 │   ├── mcp_server.py             # MCP server — exposes 4 tools over stdio
+│   ├── config.py                 # Settings (OLLAMA_BASE_URL, SEARXNG_BASE_URL, etc.)
 │   ├── orchestrator/
-│   │   ├── graph.py              # LangGraph multi-agent graph
+│   │   ├── graph.py              # LangGraph multi-agent graph (two-path routing)
 │   │   ├── state.py              # AgentState (Pydantic v2)
 │   │   ├── confidence.py         # Composite confidence scorer
 │   │   ├── escalation.py         # Human approval gate (Rich UI)
 │   │   ├── router.py             # Conditional edge logic
-│   │   └── nodes/                # planner, coder, reviewer, premium
+│   │   └── nodes/
+│   │       ├── base.py           # Shared call_local_model helper
+│   │       ├── planner.py
+│   │       ├── coder.py
+│   │       ├── reviewer.py
+│   │       ├── researcher.py     # Pre-fetch pipeline (coding/review path)
+│   │       ├── tool_agent.py     # Agentic tool-calling loop (research path)
+│   │       └── premium.py        # Claude escalation node
+│   ├── tools/
+│   │   └── web_tools.py          # web_search + web_fetch LangChain tools
+│   ├── research/
+│   │   ├── searcher.py           # SearXNG → Tavily → DuckDuckGo routing
+│   │   ├── fetcher.py            # httpx + trafilatura page extraction
+│   │   ├── query_generator.py    # Ollama-based query generation
+│   │   ├── classifier.py         # Intent classifier (reasoning vs current_facts)
+│   │   └── synthesizer.py        # Research brief synthesis
 │   ├── workflows/
 │   │   ├── schema.py             # Pydantic WorkflowSpec
-│   │   ├── loader.py             # YAML → LangGraph compiler
+│   │   ├── loader.py             # YAML → AgentState compiler
 │   │   └── definitions/          # default_coding/research/review.yaml
 │   └── models/
 │       └── registry.py           # Known models with roles and sizes
 ├── benchmarks/
 │   ├── runner.py                 # Benchmark execution engine
-│   ├── judge.py                  # Automated quality scoring (Qwen2.5-Coder judge)
-│   └── tasks/suite.py            # 20 standardised tasks
+│   ├── judge.py                  # Automated quality scoring
+│   └── mini_bench.py
 ├── reports/
-│   └── milestone-1-validation.md # Qwen2.5-Coder 7B validation results
+│   └── milestone-1-validation.md
+├── .env.example                  # Environment variables template
 ├── .vscode/mcp.json              # GitHub Copilot MCP config (auto-detected)
 └── pyproject.toml
 ```
@@ -347,6 +421,12 @@ frontier-agent/
 ---
 
 ## Troubleshooting
+
+**Tool calling returns JSON text instead of executing tools**
+qwen2.5-coder:7b outputs tool calls as JSON text rather than using Ollama's structured tool_calls field. This is handled automatically via a content-based parser in `tool_agent.py` — no action needed.
+
+**Research workflow not fetching live data**
+Make sure you're using `--workflow research`. The coding workflow intentionally skips web retrieval. Check that Ollama is running: `frontier mcp-status`.
 
 **`llama-server binary not found` when starting Ollama**
 You installed Ollama via Homebrew (`brew install ollama`), which ships the MLX-only backend and requires 32 GB minimum. Run `brew uninstall ollama`, then `frontier start` will download the correct binary automatically.
