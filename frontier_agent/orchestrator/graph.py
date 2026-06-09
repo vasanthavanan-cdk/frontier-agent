@@ -1,3 +1,9 @@
+"""LangGraph pipeline: builds and runs the multi-agent graph for a single task.
+
+Graph topology: planner → coder → reviewer → (escalate?) → premium? → done
+Each node writes to AgentState; conditional edges (router.py) decide the next hop.
+Entry point for both the CLI and the MCP server is `run()`.
+"""
 from __future__ import annotations
 
 import uuid
@@ -7,6 +13,7 @@ from rich.panel import Panel
 from langgraph.graph import StateGraph, END
 
 from .state import AgentState, TokenUsage
+from .nodes.researcher import researcher_node
 from .nodes.planner import planner_node
 from .nodes.coder import coder_node
 from .nodes.reviewer import reviewer_node
@@ -14,20 +21,44 @@ from .nodes.premium import premium_node
 from .escalation import request_escalation
 from .router import after_planner, after_coder, after_reviewer, after_escalation
 from ..workflows.loader import load_workflow, apply_workflow
+from ..logger import get_logger
 
 console = Console()
+log = get_logger(__name__)
 
 
 def _escalation_node(state: AgentState) -> AgentState:
+    """Wrap request_escalation so the graph can treat it as a normal node.
+
+    In headless mode (MCP / Claude-driven) there is no terminal to prompt and no
+    Anthropic API key to call, so we skip the human gate entirely and simply
+    record that escalation is *recommended* — the caller (Claude) decides whether
+    to take over.
+    """
+    reason = state.escalation_reason or "Confidence below threshold after max retries"
+    log.warning("[%s] ESCALATION requested  reason=%s", state.task_id, reason)
+
+    if not state.interactive:
+        log.warning("[%s] ESCALATION recommended (headless — deferring to caller)", state.task_id)
+        return AgentState(**{
+            **state.model_dump(),
+            "escalation_requested": True,
+            "escalation_approved": False,
+            "escalation_reason": reason,
+        })
+
     updated = request_escalation(state)
+    approved = updated.escalation_approved
+    log.warning("[%s] ESCALATION %s by user", state.task_id, "APPROVED" if approved else "DECLINED")
     return AgentState(**{
         **state.model_dump(),
         "escalation_requested": True,
-        "escalation_approved": updated.escalation_approved,
+        "escalation_approved": approved,
     })
 
 
 def _done_node(state: AgentState) -> AgentState:
+    """Finalise output: fall back to the coder's content if premium never ran."""
     # if final_output not set by premium, compile from local outputs
     if not state.final_output:
         coder_out = state.agent_outputs.get("coder")
@@ -37,8 +68,10 @@ def _done_node(state: AgentState) -> AgentState:
 
 
 def build_graph() -> StateGraph:
+    """Compile and return the LangGraph StateGraph. Called once per `run()` invocation."""
     g = StateGraph(AgentState)
 
+    g.add_node("researcher", researcher_node)
     g.add_node("planner", planner_node)
     g.add_node("coder", coder_node)
     g.add_node("reviewer", reviewer_node)
@@ -46,7 +79,9 @@ def build_graph() -> StateGraph:
     g.add_node("premium", premium_node)
     g.add_node("done", _done_node)
 
-    g.set_entry_point("planner")
+    # researcher always runs first (no-op when research_enabled=False)
+    g.set_entry_point("researcher")
+    g.add_edge("researcher", "planner")
 
     g.add_conditional_edges("planner", after_planner, {
         "planner": "planner",
@@ -72,19 +107,31 @@ def build_graph() -> StateGraph:
     return g.compile()
 
 
-def run(task: str, workflow_name: str = "default_coding") -> AgentState:
-    console.print(Panel.fit(
-        f"[bold green]Task:[/bold green] {task}\n"
-        f"[dim]Workflow: {workflow_name}[/dim]",
-        title="[bold]Frontier Agent[/bold]",
-        border_style="green",
-    ))
+def run(task: str, workflow_name: str = "default_coding", interactive: bool = True) -> AgentState:
+    """Execute the full pipeline for `task` and return the final AgentState.
+
+    Loads the named YAML workflow (falls back to defaults on missing file), seeds
+    AgentState, runs the compiled graph, prints a Rich summary, and returns the
+    completed state so callers (CLI, MCP server, benchmarks) can inspect results.
+
+    `interactive=True` (CLI) shows Rich panels and prompts before escalating.
+    `interactive=False` (MCP / Claude-driven) runs headless: no panels, no human
+    prompt, no premium API call — escalation is surfaced as a recommendation.
+    """
+    if interactive:
+        console.print(Panel.fit(
+            f"[bold green]Task:[/bold green] {task}\n"
+            f"[dim]Workflow: {workflow_name}[/dim]",
+            title="[bold]Frontier Agent[/bold]",
+            border_style="green",
+        ))
 
     # load workflow config and overlay onto initial state
     try:
         workflow = load_workflow(workflow_name)
     except FileNotFoundError:
-        console.print(f"[yellow]Warning: workflow '{workflow_name}' not found, using defaults.[/yellow]")
+        if interactive:
+            console.print(f"[yellow]Warning: workflow '{workflow_name}' not found, using defaults.[/yellow]")
         workflow = None
 
     initial = AgentState(
@@ -92,19 +139,33 @@ def run(task: str, workflow_name: str = "default_coding") -> AgentState:
         original_input=task,
         workflow_name=workflow_name,
         token_usage=TokenUsage(),
+        interactive=interactive,
     )
     if workflow:
         initial = apply_workflow(initial, workflow)
+
+    log.info("[%s] PIPELINE START  workflow=%s  task=%s", initial.task_id, workflow_name, task[:80])
 
     graph = build_graph()
     result = graph.invoke(initial)
     final = AgentState(**result) if isinstance(result, dict) else result
 
-    _print_summary(final)
+    log.info(
+        "[%s] PIPELINE DONE  escalated=%s  local_tokens=%d  premium_tokens=%d  cost=$%.4f",
+        final.task_id,
+        final.escalation_approved,
+        final.token_usage.local_tokens,
+        final.token_usage.premium_tokens,
+        final.token_usage.premium_cost_usd,
+    )
+
+    if interactive:
+        _print_summary(final)
     return final
 
 
 def _print_summary(state: AgentState) -> None:
+    """Print a Rich panel showing token usage, cost, and escalation status."""
     usage = state.token_usage
     console.print()
     console.print(Panel.fit(

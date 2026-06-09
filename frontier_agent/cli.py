@@ -1,3 +1,18 @@
+"""Frontier Agent CLI — Typer application exposing all user-facing commands.
+
+Commands:
+  frontier start            Bootstrap: install Ollama, start server, pull default model
+  frontier stop             Gracefully stop the Ollama server
+  frontier run              Run a task through the local agent pipeline
+  frontier status           Show Ollama version, server state, and downloaded models
+  frontier workflows        List available YAML workflow definitions
+  frontier models status    Show registry models with download state and disk usage
+  frontier models pull      Pull a recommended specialist model for a given role
+  frontier mcp-status       Health-check the MCP server end-to-end
+  frontier install-global   Symlink the CLI binary into a system PATH directory
+  frontier bench            Run the benchmark suite and write a Markdown report
+  frontier logs             View or stream the pipeline activity log
+"""
 from __future__ import annotations
 
 import os
@@ -32,10 +47,11 @@ _WORKFLOWS_DIR = Path(__file__).parent / "workflows" / "definitions"
 _STATE_DIR = Path.home() / ".frontier"
 _OLLAMA_PID_FILE = _STATE_DIR / "ollama.pid"
 _OLLAMA_URL = "http://localhost:11434"
-_DEFAULT_MODEL = "gemma4:12b"
+_DEFAULT_MODEL = "qwen2.5-coder:7b"
 
 
 def _ollama_running() -> bool:
+    """Return True if Ollama is reachable on localhost:11434."""
     try:
         urllib.request.urlopen(_OLLAMA_URL, timeout=2)
         return True
@@ -44,6 +60,7 @@ def _ollama_running() -> bool:
 
 
 def _wait_for_ollama(timeout: int = 20) -> bool:
+    """Poll Ollama every second until it responds or `timeout` seconds elapse."""
     for _ in range(timeout):
         if _ollama_running():
             return True
@@ -508,12 +525,12 @@ def mcp_status() -> None:
         )
         all_ok = False
 
-    # ── 5. gemma4:12b downloaded ──────────────────────────────────────────────
+    # ── 5. qwen2.5-coder:7b downloaded ──────────────────────────────────────────────
     result = subprocess.run(["ollama", "list"], capture_output=True, text=True)
-    if "gemma4:12b" in result.stdout:
-        console.print("[bold]Model  [/bold] [green]✓[/green]  gemma4:12b present")
+    if "qwen2.5-coder:7b" in result.stdout:
+        console.print("[bold]Model  [/bold] [green]✓[/green]  qwen2.5-coder:7b present")
     else:
-        console.print("[bold]Model  [/bold] [yellow]⚠ gemma4:12b not found[/yellow] — run: ollama pull gemma4:12b")
+        console.print("[bold]Model  [/bold] [yellow]⚠ qwen2.5-coder:7b not found[/yellow] — run: ollama pull qwen2.5-coder:7b")
         all_ok = False
 
     # ── 6. claude mcp list (only if claude CLI available) ────────────────────
@@ -593,13 +610,14 @@ def bench(
 
 
 def _write_md_report(report: "BenchReport") -> None:
+    """Serialise a BenchReport to a Markdown file under reports/."""
     from datetime import datetime
     from benchmarks.runner import BenchReport
 
     lines: list[str] = [
         "# Milestone 5 — Benchmark Report",
         f"\n**Date**: {datetime.now().strftime('%Y-%m-%d %H:%M')}  ",
-        f"**Model**: gemma4:12b (local)  ",
+        f"**Model**: qwen2.5-coder:7b (local)  ",
         f"**Hardware**: Mac Mini M4 Pro 24GB  \n",
         "## Results by Task\n",
         "| ID | Category | Score | Escalated | Latency (s) | Cost (USD) | Judge Reason |",
@@ -638,6 +656,52 @@ def _write_md_report(report: "BenchReport") -> None:
     out = Path(__file__).parent.parent / "reports" / "milestone-5-benchmark-report.md"
     out.write_text("\n".join(lines))
     console.print(f"[dim]Report written to {out}[/dim]\n")
+
+
+# ── frontier logs ─────────────────────────────────────────────────────────────
+
+@app.command("logs")
+def logs(
+    lines: int = typer.Option(50, "--lines", "-n", help="Number of recent lines to show."),
+    follow: bool = typer.Option(False, "--follow", "-f", help="Stream new log entries in real time (like tail -f)."),
+) -> None:
+    """Show the Frontier Agent pipeline log (~/.frontier/mcp.log)."""
+    from .logger import log_path
+
+    log_file = log_path()
+    if not log_file.exists():
+        console.print("[yellow]No log file yet — run a task first.[/yellow]")
+        console.print(f"[dim]Expected location: {log_file}[/dim]")
+        raise typer.Exit(0)
+
+    console.print(f"[dim]Log file: {log_file}[/dim]\n")
+
+    if follow:
+        # stream with tail -f
+        try:
+            subprocess.run(["tail", "-f", "-n", str(lines), str(log_file)])
+        except KeyboardInterrupt:
+            pass
+    else:
+        # show last N lines with colour coding
+        text = log_file.read_text(encoding="utf-8", errors="replace")
+        all_lines = text.splitlines()
+        recent = all_lines[-lines:] if len(all_lines) > lines else all_lines
+
+        for line in recent:
+            if "  WARNING  " in line or "ESCALAT" in line:
+                console.print(f"[yellow]{line}[/yellow]")
+            elif "  ERROR  " in line or "FAIL" in line or "✗" in line:
+                console.print(f"[red]{line}[/red]")
+            elif "PIPELINE DONE" in line or "COMPLETE" in line:
+                console.print(f"[green]{line}[/green]")
+            elif "ROUTER" in line:
+                console.print(f"[cyan]{line}[/cyan]")
+            else:
+                console.print(f"[dim]{line}[/dim]")
+
+        console.print(f"\n[dim]Showing last {len(recent)} of {len(all_lines)} lines. "
+                      f"Use --follow / -f to stream live.[/dim]")
 
 
 if __name__ == "__main__":

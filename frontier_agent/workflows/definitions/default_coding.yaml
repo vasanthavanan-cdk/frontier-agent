@@ -3,10 +3,10 @@ name: "default_coding"
 description: "Coding workflow: plan → implement → review. Best for writing, refactoring, or debugging code."
 
 models:
-  planner: "gemma4:12b"
-  coder: "gemma4:12b"
-  reviewer: "gemma4:12b"
-  documenter: "gemma4:12b"
+  planner: "qwen2.5-coder:7b"
+  coder: "qwen2.5-coder:7b"
+  reviewer: "qwen2.5-coder:7b"
+  documenter: "qwen2.5-coder:7b"
   fallback_premium: "claude-sonnet-4-5"
 
 confidence_thresholds:
@@ -19,6 +19,10 @@ confidence_thresholds:
 escalation:
   require_human_approval: true
   max_local_retries: 2
+
+research:
+  enabled: false       # set to true for library/framework-specific tasks
+  max_sources: 4
 
 steps:
   - id: plan

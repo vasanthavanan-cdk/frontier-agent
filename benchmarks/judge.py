@@ -1,3 +1,9 @@
+"""Automated benchmark judge using Gemma 4 12B as the evaluator.
+
+`judge(task, answer)` asks Gemma to score the answer 1-5 against the original
+prompt and quality hints, then returns (score, one-line reason). Using the same
+local model as the judge keeps evaluation cost at $0.
+"""
 from __future__ import annotations
 
 import re
@@ -6,7 +12,7 @@ from langchain_core.messages import SystemMessage, HumanMessage
 
 from .tasks.suite import BenchTask
 
-_JUDGE_MODEL = "gemma4:12b"
+_JUDGE_MODEL = "qwen2.5-coder:7b"
 
 _SYSTEM = """You are a strict technical evaluator scoring AI-generated answers.
 Score the answer on a scale of 1-5 using ONLY these criteria:

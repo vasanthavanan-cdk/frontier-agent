@@ -1,3 +1,8 @@
+"""Standardised benchmark task suite: 20 tasks across coding, reasoning, and research.
+
+Each BenchTask carries `quality_hints` — keywords that a good answer should contain.
+The judge uses these alongside its LLM scoring to catch answers that miss key concepts.
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -5,6 +10,7 @@ from enum import Enum
 
 
 class Category(str, Enum):
+    """Task categories used for per-category breakdown in the benchmark report."""
     coding = "coding"
     reasoning = "reasoning"
     research = "research"
@@ -12,6 +18,7 @@ class Category(str, Enum):
 
 @dataclass(frozen=True)
 class BenchTask:
+    """One benchmark task definition. Frozen so tasks cannot be mutated at runtime."""
     id: str
     category: Category
     workflow: str

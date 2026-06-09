@@ -1,9 +1,15 @@
+"""Planner node: classifies the task type and decomposes it into a numbered plan.
+
+Output format: TASK_TYPE / PLAN / SUMMARY.
+The detected TASK_TYPE is parsed back out and written into AgentState so the
+confidence scorer can apply the right heuristics downstream.
+"""
 from __future__ import annotations
 
 from rich.console import Console
 
 from ..state import AgentState, TaskType
-from .base import call_local_model
+from .base import call_local_model, research_preamble
 
 console = Console()
 
@@ -22,13 +28,14 @@ SUMMARY: <one sentence describing the overall goal>"""
 
 
 def planner_node(state: AgentState) -> AgentState:
+    """LangGraph node: run the planner, parse task type, and update state."""
     console.print("[dim]→ Planner analyzing task...[/dim]")
 
     output, confidence = call_local_model(
         state=state,
         role="planner",
         system_prompt=_SYSTEM,
-        user_message=state.original_input,
+        user_message=research_preamble(state) + state.original_input,
     )
 
     # detect task type from planner output
