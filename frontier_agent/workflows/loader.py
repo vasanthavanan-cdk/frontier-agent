@@ -79,4 +79,5 @@ def apply_workflow(state: AgentState, workflow: WorkflowSpec) -> AgentState:
         "fallback_premium_model": m.fallback_premium,
         "research_enabled": workflow.research.enabled,
         "research_max_sources": workflow.research.max_sources,
+        "tool_calling_enabled": workflow.research.tool_calling,
     })

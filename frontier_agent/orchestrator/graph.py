@@ -18,6 +18,7 @@ from .nodes.planner import planner_node
 from .nodes.coder import coder_node
 from .nodes.reviewer import reviewer_node
 from .nodes.premium import premium_node
+from .nodes.tool_agent import tool_agent_node
 from .escalation import request_escalation
 from .router import after_planner, after_coder, after_reviewer, after_escalation
 from ..workflows.loader import load_workflow, apply_workflow
@@ -67,6 +68,11 @@ def _done_node(state: AgentState) -> AgentState:
     return state
 
 
+def _after_researcher(state: AgentState) -> str:
+    """Route to tool_agent when tool calling is enabled, otherwise standard planner path."""
+    return "tool_agent" if state.tool_calling_enabled else "planner"
+
+
 def build_graph() -> StateGraph:
     """Compile and return the LangGraph StateGraph. Called once per `run()` invocation."""
     g = StateGraph(AgentState)
@@ -74,14 +80,19 @@ def build_graph() -> StateGraph:
     g.add_node("researcher", researcher_node)
     g.add_node("planner", planner_node)
     g.add_node("coder", coder_node)
+    g.add_node("tool_agent", tool_agent_node)
     g.add_node("reviewer", reviewer_node)
     g.add_node("escalate", _escalation_node)
     g.add_node("premium", premium_node)
     g.add_node("done", _done_node)
 
-    # researcher always runs first (no-op when research_enabled=False)
+    # researcher always runs first; routes to tool_agent or planner based on workflow
     g.set_entry_point("researcher")
-    g.add_edge("researcher", "planner")
+    g.add_conditional_edges("researcher", _after_researcher, {
+        "planner": "planner",
+        "tool_agent": "tool_agent",
+    })
+    g.add_edge("tool_agent", "reviewer")
 
     g.add_conditional_edges("planner", after_planner, {
         "planner": "planner",

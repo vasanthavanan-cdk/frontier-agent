@@ -39,6 +39,12 @@ def researcher_node(state: AgentState) -> AgentState:
     if not state.research_enabled:
         return state
 
+    # Tool-calling path: the model drives its own retrieval in tool_agent_node.
+    # Skip pre-fetch entirely so the model sees a clean slate and calls tools itself.
+    if state.tool_calling_enabled:
+        log.info("[%s] RESEARCH skipped — tool_calling_enabled (tool_agent handles retrieval)", state.task_id)
+        return state
+
     # Two-lane routing: only "current facts" questions (latest version, news,
     # prices) need live web retrieval. Pure reasoning/coding tasks are answered
     # from the local model's own competence — no retrieval, no latency.

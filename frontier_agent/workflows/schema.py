@@ -66,6 +66,7 @@ class ResearchConfig(BaseModel):
     """Controls the web research node that runs before the planner."""
     enabled: bool = False
     max_sources: int = Field(5, ge=1, le=15)
+    tool_calling: bool = False
 
 
 class RoutingRule(BaseModel):
