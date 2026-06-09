@@ -1,4 +1,4 @@
-"""Synthesize raw web content into a structured Research Brief using Gemma.
+"""Synthesize raw web content into a structured Research Brief using the local model.
 
 The brief is injected into AgentState so every downstream node (planner,
 coder, reviewer) works from the same grounded, sourced context.
@@ -24,11 +24,11 @@ _PROMPT_TMPL = (
 
 # how much source content to pass to the synthesizer per page
 _CHARS_PER_SOURCE = 2500
-# max total context sent to synthesizer (to stay within Gemma's window)
+# max total context sent to synthesizer (to stay within the model's window)
 _MAX_TOTAL_CHARS = 10_000
 
 
-def synthesize(task: str, sources: list[dict], model: str = "gemma4:12b") -> str:
+def synthesize(task: str, sources: list[dict], model: str = "qwen2.5-coder:7b") -> str:
     """Compress fetched source content into a structured Research Brief.
 
     Returns the brief as a string, or empty string if no sources were provided.
@@ -57,6 +57,7 @@ def synthesize(task: str, sources: list[dict], model: str = "gemma4:12b") -> str
             base_url="http://localhost:11434",
             temperature=0.1,
             num_predict=1024,
+            num_ctx=16384,
             keep_alive="10m",
         )
         response = llm.invoke([

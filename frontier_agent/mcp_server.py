@@ -161,7 +161,7 @@ def _build_trace(result: dict) -> str:
     for i, step in enumerate(steps):
         score = scores[step]
         threshold = thresholds.get(step, thresholds.get("default", 0.70))
-        model = model_assignments.get(step, "gemma4:12b")
+        model = model_assignments.get(step, "qwen2.5-coder:7b")
         attempt = retry_counts.get(step, 1)
         passed = score >= threshold
 

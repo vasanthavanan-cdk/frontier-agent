@@ -23,13 +23,13 @@ class ModelInfo:
 
 # Known models validated for Mac Mini M4 Pro 24GB
 REGISTRY: dict[str, ModelInfo] = {
-    "gemma4:12b": ModelInfo(
-        tag="gemma4:12b",
-        params_b=12,
-        size_gb=7.6,
-        tok_per_sec=30,
+    "qwen2.5-coder:7b": ModelInfo(
+        tag="qwen2.5-coder:7b",
+        params_b=7,
+        size_gb=4.7,
+        tok_per_sec=40,
         roles=("planner", "coder", "reviewer", "documenter"),
-        description="Default orchestrator — multimodal, native audio/vision, agentic workflows",
+        description="Default orchestrator + all roles — fast, code-tuned, no thinking-mode overhead",
     ),
     "qwen2.5-coder:14b": ModelInfo(
         tag="qwen2.5-coder:14b",
@@ -37,7 +37,7 @@ REGISTRY: dict[str, ModelInfo] = {
         size_gb=9.0,
         tok_per_sec=25,
         roles=("coder",),
-        description="Coding specialist — pull if Gemma 4 coding quality is insufficient",
+        description="Coding specialist — pull if 7b coding quality is insufficient",
     ),
     "deepseek-r1:14b": ModelInfo(
         tag="deepseek-r1:14b",
@@ -53,7 +53,7 @@ REGISTRY: dict[str, ModelInfo] = {
         size_gb=9.0,
         tok_per_sec=24,
         roles=("planner",),
-        description="Fallback orchestrator — reliable tool calling if Gemma 4 disappoints",
+        description="Fallback orchestrator — reliable tool calling for harder planning",
     ),
 }
 

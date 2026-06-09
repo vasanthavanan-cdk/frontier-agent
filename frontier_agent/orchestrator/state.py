@@ -68,10 +68,10 @@ class AgentState(BaseModel):
 
     # model tag to use for each agent role (populated from YAML workflow)
     model_assignments: dict[str, str] = Field(default_factory=lambda: {
-        "planner": "gemma4:12b",
-        "coder": "gemma4:12b",
-        "reviewer": "gemma4:12b",
-        "documenter": "gemma4:12b",
+        "planner": "qwen2.5-coder:7b",
+        "coder": "qwen2.5-coder:7b",
+        "reviewer": "qwen2.5-coder:7b",
+        "documenter": "qwen2.5-coder:7b",
     })
 
     # configurable thresholds (from YAML workflow)

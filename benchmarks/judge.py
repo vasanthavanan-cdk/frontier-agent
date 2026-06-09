@@ -12,7 +12,7 @@ from langchain_core.messages import SystemMessage, HumanMessage
 
 from .tasks.suite import BenchTask
 
-_JUDGE_MODEL = "gemma4:12b"
+_JUDGE_MODEL = "qwen2.5-coder:7b"
 
 _SYSTEM = """You are a strict technical evaluator scoring AI-generated answers.
 Score the answer on a scale of 1-5 using ONLY these criteria:

@@ -1,6 +1,6 @@
 # Frontier Agent
 
-A local-first AI orchestration platform. Runs tasks through **Gemma 4 12B on your Mac** and escalates to Claude or other premium models **only with your explicit approval**.
+A local-first AI orchestration platform. Runs tasks through **Qwen2.5-Coder 7B on your Mac** and escalates to Claude or other premium models **only with your explicit approval**.
 
 Built to reduce Claude token consumption and GitHub Copilot AI credit usage without sacrificing quality.
 
@@ -12,7 +12,7 @@ Built to reduce Claude token consumption and GitHub Copilot AI credit usage with
 Your Task
    │
    ▼
-Planner (Gemma 4 12B)          ← classifies task, decomposes into steps
+Planner (Qwen2.5-Coder 7B)          ← classifies task, decomposes into steps
    │
    ▼
 Coder / Researcher / Reviewer  ← local specialist agents
@@ -54,7 +54,7 @@ Equivalent direct-Claude cost for the same 5 tasks: ~$0.057
 | Requirement | Notes |
 |-------------|-------|
 | Mac (Apple Silicon) or Linux | Tested on M4 Pro; Linux amd64/arm64 supported |
-| 16 GB unified memory (24 GB recommended) | Gemma 4 12B needs ~8 GB headroom |
+| 16 GB unified memory (24 GB recommended) | Qwen2.5-Coder 7B needs ~5 GB headroom |
 | Python 3.11+ | 3.14 recommended |
 | `ANTHROPIC_API_KEY` | Only needed if you approve escalation to Claude |
 
@@ -79,7 +79,7 @@ source ~/.zshrc          # or ~/.bash_profile on bash
 cp .env.example .env
 # edit .env and add: ANTHROPIC_API_KEY=sk-ant-...
 
-# 4. Start — installs Ollama and pulls gemma4:12b automatically if missing
+# 4. Start — installs Ollama and pulls qwen2.5-coder:7b automatically if missing
 frontier start
 ```
 
@@ -89,7 +89,7 @@ That's it. `frontier start` handles the rest:
 |----------------|------------------------|
 | `ollama` binary | Downloads from GitHub releases to `~/.local/bin` |
 | Ollama server | Starts it with performance flags in the background |
-| `gemma4:12b` model | Pulls it (~7.6 GB, one-time download) |
+| `qwen2.5-coder:7b` model | Pulls it (~4.7 GB, one-time download) |
 
 > **Note for macOS users who installed Ollama via Homebrew:** `brew install ollama` ships the MLX-only backend which requires 32 GB minimum and will fail on 16–24 GB machines. Run `brew uninstall ollama` first, then let `frontier start` install the correct binary.
 
@@ -261,7 +261,7 @@ When local confidence falls below threshold after retries, you get a blocking pr
 │                                                           │
 ╰───────────────────────────────────────────────────────────╯
 ╭──────────────────── Cost Estimate ────────────────────────╮
-│  Local model        gemma4:12b                            │
+│  Local model        qwen2.5-coder:7b                            │
 │  Escalation target  claude-sonnet-4-5                     │
 │  Reason             Confidence below threshold after      │
 │                     2 retry attempts                      │
@@ -283,9 +283,9 @@ Workflows are plain YAML. Edit them directly — changes take effect on the next
 ```yaml
 # frontier_agent/workflows/definitions/default_coding.yaml
 models:
-  planner:  "gemma4:12b"
+  planner:  "qwen2.5-coder:7b"
   coder:    "qwen2.5-coder:14b"   # swap to specialist after pulling
-  reviewer: "gemma4:12b"
+  reviewer: "qwen2.5-coder:7b"
   fallback_premium: "claude-sonnet-4-5"
 
 confidence_thresholds:
@@ -301,14 +301,14 @@ escalation:
 
 ## Model Stack
 
-Start with just `gemma4:12b`. Pull specialists only when you observe a real quality gap.
+Start with just `qwen2.5-coder:7b`. Pull specialists only when you observe a real quality gap.
 
 | Model | Size | Role | Pull when |
 |-------|------|------|-----------|
-| `gemma4:12b` | 7.6 GB | Default orchestrator + all roles | **Now (required)** |
+| `qwen2.5-coder:7b` | 4.7 GB | Default orchestrator + all roles | **Now (required)** |
 | `qwen2.5-coder:14b` | ~9 GB | Coding specialist | Coding quality insufficient |
 | `deepseek-r1:14b` | ~9 GB | Reasoning specialist | Complex multi-step reasoning fails |
-| `qwen3:14b` | ~9 GB | Fallback orchestrator | Gemma 4 tool-calling unreliable |
+| `qwen3:14b` | ~9 GB | Fallback orchestrator | Harder planning / tool-calling tasks |
 
 Maximum realistic footprint: **~27 GB** (vs ~140 GB if all were pre-downloaded).
 
@@ -336,10 +336,10 @@ frontier-agent/
 │       └── registry.py           # Known models with roles and sizes
 ├── benchmarks/
 │   ├── runner.py                 # Benchmark execution engine
-│   ├── judge.py                  # Automated quality scoring (Gemma 4 judge)
+│   ├── judge.py                  # Automated quality scoring (Qwen2.5-Coder judge)
 │   └── tasks/suite.py            # 20 standardised tasks
 ├── reports/
-│   └── milestone-1-validation.md # Gemma 4 12B validation results
+│   └── milestone-1-validation.md # Qwen2.5-Coder 7B validation results
 ├── .vscode/mcp.json              # GitHub Copilot MCP config (auto-detected)
 └── pyproject.toml
 ```

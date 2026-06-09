@@ -14,10 +14,10 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 class ModelAssignments(BaseModel):
     """Maps each agent role to an Ollama model tag. Change the tag to swap a model."""
-    planner: str = "gemma4:12b"
-    coder: str = "gemma4:12b"
-    reviewer: str = "gemma4:12b"
-    documenter: str = "gemma4:12b"
+    planner: str = "qwen2.5-coder:7b"
+    coder: str = "qwen2.5-coder:7b"
+    reviewer: str = "qwen2.5-coder:7b"
+    documenter: str = "qwen2.5-coder:7b"
     fallback_premium: str = "claude-sonnet-4-5"
 
 

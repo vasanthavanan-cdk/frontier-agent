@@ -80,7 +80,7 @@ def request_escalation(state: AgentState) -> AgentState:
     cost_table = Table(box=box.SIMPLE, show_header=False, padding=(0, 2))
     cost_table.add_column("Label", style="dim")
     cost_table.add_column("Value", style="white")
-    cost_table.add_row("Local model", state.model_assignments.get("coder", "gemma4:12b"))
+    cost_table.add_row("Local model", state.model_assignments.get("coder", "qwen2.5-coder:7b"))
     cost_table.add_row("Escalation target", f"[magenta]{state.fallback_premium_model}[/magenta]")
     cost_table.add_row("Reason", state.escalation_reason or "Confidence below threshold after max retries")
     cost_table.add_row("Estimated input tokens", f"~{input_tokens:,}")

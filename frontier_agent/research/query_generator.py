@@ -1,4 +1,4 @@
-"""Generate targeted web search queries from a task description using Gemma."""
+"""Generate targeted web search queries from a task description using the local model."""
 from __future__ import annotations
 
 from langchain_ollama import ChatOllama
@@ -15,15 +15,16 @@ _PROMPT_TMPL = (
 )
 
 
-def generate_queries(task: str, model: str = "gemma4:12b") -> list[str]:
-    """Use Gemma to generate 3-4 targeted search queries for the given task."""
+def generate_queries(task: str, model: str = "qwen2.5-coder:7b") -> list[str]:
+    """Use the local model to generate 3-4 targeted search queries for the given task."""
     log.debug("Generating search queries for: %s", task[:100])
     try:
         llm = ChatOllama(
             model=model,
             base_url="http://localhost:11434",
             temperature=0.1,
-            num_predict=512,
+            num_predict=256,
+            num_ctx=8192,
             keep_alive="10m",
         )
         response = llm.invoke([

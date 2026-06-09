@@ -47,7 +47,7 @@ _WORKFLOWS_DIR = Path(__file__).parent / "workflows" / "definitions"
 _STATE_DIR = Path.home() / ".frontier"
 _OLLAMA_PID_FILE = _STATE_DIR / "ollama.pid"
 _OLLAMA_URL = "http://localhost:11434"
-_DEFAULT_MODEL = "gemma4:12b"
+_DEFAULT_MODEL = "qwen2.5-coder:7b"
 
 
 def _ollama_running() -> bool:
@@ -525,12 +525,12 @@ def mcp_status() -> None:
         )
         all_ok = False
 
-    # ── 5. gemma4:12b downloaded ──────────────────────────────────────────────
+    # ── 5. qwen2.5-coder:7b downloaded ──────────────────────────────────────────────
     result = subprocess.run(["ollama", "list"], capture_output=True, text=True)
-    if "gemma4:12b" in result.stdout:
-        console.print("[bold]Model  [/bold] [green]✓[/green]  gemma4:12b present")
+    if "qwen2.5-coder:7b" in result.stdout:
+        console.print("[bold]Model  [/bold] [green]✓[/green]  qwen2.5-coder:7b present")
     else:
-        console.print("[bold]Model  [/bold] [yellow]⚠ gemma4:12b not found[/yellow] — run: ollama pull gemma4:12b")
+        console.print("[bold]Model  [/bold] [yellow]⚠ qwen2.5-coder:7b not found[/yellow] — run: ollama pull qwen2.5-coder:7b")
         all_ok = False
 
     # ── 6. claude mcp list (only if claude CLI available) ────────────────────
@@ -617,7 +617,7 @@ def _write_md_report(report: "BenchReport") -> None:
     lines: list[str] = [
         "# Milestone 5 — Benchmark Report",
         f"\n**Date**: {datetime.now().strftime('%Y-%m-%d %H:%M')}  ",
-        f"**Model**: gemma4:12b (local)  ",
+        f"**Model**: qwen2.5-coder:7b (local)  ",
         f"**Hardware**: Mac Mini M4 Pro 24GB  \n",
         "## Results by Task\n",
         "| ID | Category | Score | Escalated | Latency (s) | Cost (USD) | Judge Reason |",

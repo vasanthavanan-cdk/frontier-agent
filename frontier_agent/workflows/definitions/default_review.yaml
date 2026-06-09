@@ -3,10 +3,10 @@ name: "default_review"
 description: "Review workflow: plan → review. Best for code review, PR review, architecture review."
 
 models:
-  planner: "gemma4:12b"
-  coder: "gemma4:12b"
-  reviewer: "gemma4:12b"
-  documenter: "gemma4:12b"
+  planner: "qwen2.5-coder:7b"
+  coder: "qwen2.5-coder:7b"
+  reviewer: "qwen2.5-coder:7b"
+  documenter: "qwen2.5-coder:7b"
   fallback_premium: "claude-sonnet-4-5"
 
 confidence_thresholds:

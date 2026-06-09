@@ -9,6 +9,10 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://localhost:11434"
     anthropic_api_key: str = ""
     openai_api_key: str = ""
+    # Optional: Tavily search API key for the current-facts retrieval lane.
+    # When set, current-facts queries use Tavily (clean, recency-ranked,
+    # pre-extracted content) instead of DuckDuckGo + HTML scraping.
+    tavily_api_key: str = ""
     escalation_threshold: float = 0.70
     max_local_retries: int = 2
 

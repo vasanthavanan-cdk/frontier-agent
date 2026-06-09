@@ -27,7 +27,7 @@ def call_local_model(
     The model tag is resolved from `state.model_assignments[role]`, so swapping
     a model only requires a YAML edit — no code changes.
     """
-    model_tag = state.model_assignments.get(role, "gemma4:12b")
+    model_tag = state.model_assignments.get(role, "qwen2.5-coder:7b")
     attempt = state.retry_counts.get(role, 0) + 1
 
     log.info("[%s] %s  model=%s  attempt=%d", state.task_id, role.upper(), model_tag, attempt)
@@ -36,7 +36,8 @@ def call_local_model(
         model=model_tag,
         base_url="http://localhost:11434",
         temperature=0.2,
-        num_predict=2048,
+        num_predict=4096,
+        num_ctx=16384,
         keep_alive="10m",
     )
 
@@ -48,7 +49,12 @@ def call_local_model(
     content = response.content
 
     output = AgentOutput(agent=role, content=content, attempt=attempt)
-    confidence = compute_confidence(output, state.task_type, attempt)
+    confidence = compute_confidence(
+        output,
+        state.task_type,
+        attempt,
+        grounding_context=state.research_context or None,
+    )
     output.confidence = confidence
 
     threshold = state.confidence_thresholds.get(role, state.confidence_thresholds.get("default", 0.70))

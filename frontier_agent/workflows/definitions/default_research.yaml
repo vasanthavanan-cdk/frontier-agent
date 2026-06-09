@@ -3,10 +3,10 @@ name: "default_research"
 description: "Research workflow: plan → investigate → document. Best for analysis, summaries, and technical research."
 
 models:
-  planner: "gemma4:12b"
-  coder: "gemma4:12b"
-  reviewer: "gemma4:12b"
-  documenter: "gemma4:12b"
+  planner: "qwen2.5-coder:7b"
+  coder: "qwen2.5-coder:7b"
+  reviewer: "qwen2.5-coder:7b"
+  documenter: "qwen2.5-coder:7b"
   fallback_premium: "claude-sonnet-4-5"
 
 confidence_thresholds:
