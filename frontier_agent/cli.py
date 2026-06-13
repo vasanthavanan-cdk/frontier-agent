@@ -25,6 +25,7 @@ import tempfile
 import time
 import urllib.request
 from pathlib import Path
+from typing import Optional
 
 import typer
 from rich.console import Console
@@ -36,8 +37,23 @@ from rich import box
 app = typer.Typer(
     name="frontier",
     help="Frontier Agent — local-first AI orchestration with human-in-the-loop escalation.",
-    no_args_is_help=True,
+    no_args_is_help=False,
 )
+
+
+@app.callback(invoke_without_command=True)
+def _default(
+    ctx: typer.Context,
+    task: Optional[str] = typer.Argument(None, help="Run a task directly (shorthand for 'frontier run')."),
+) -> None:
+    """Frontier Agent — run a task or use a subcommand."""
+    if ctx.invoked_subcommand is not None:
+        return
+    if task:
+        from .orchestrator.graph import run
+        run(task=task, workflow_name="auto")
+    else:
+        typer.echo(ctx.get_help())
 models_app = typer.Typer(help="Manage local models.")
 app.add_typer(models_app, name="models")
 
@@ -306,9 +322,9 @@ def install_global(
 def run_task(
     task: str = typer.Argument(..., help="Task description in plain language."),
     workflow: str = typer.Option(
-        "coding",
+        "auto",
         "--workflow", "-w",
-        help="Workflow to use: coding | research | review (or any custom workflow name).",
+        help="Workflow: auto (default) | coding | research | review. 'auto' detects intent.",
     ),
 ) -> None:
     """Run a task through the local agent pipeline."""

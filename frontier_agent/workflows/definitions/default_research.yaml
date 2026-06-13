@@ -23,6 +23,7 @@ escalation:
 research:
   enabled: true        # fetch current web sources before planning
   max_sources: 6       # pages to read and synthesize
+  tool_calling: true   # model drives search/fetch via Ollama tool calling
 
 steps:
   - id: plan

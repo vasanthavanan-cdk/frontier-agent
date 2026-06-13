@@ -98,3 +98,9 @@ class AgentState(BaseModel):
     research_context: str = ""
     research_sources: list[str] = Field(default_factory=list)
     research_queries: list[str] = Field(default_factory=list)
+
+    # tool calling: model drives search/fetch itself via Ollama tool calling
+    tool_calling_enabled: bool = False
+
+    # auto-routing: note appended to MCP output when intent was inferred
+    intent_assumption: str = ""

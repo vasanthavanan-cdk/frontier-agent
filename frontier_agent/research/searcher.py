@@ -127,19 +127,75 @@ def _tavily_search(queries: list[str], max_results_per_query: int) -> list[dict]
     return results
 
 
+def _searxng_search(queries: list[str], max_results_per_query: int) -> list[dict]:
+    """Query a self-hosted SearXNG instance via its JSON API.
+
+    SearXNG aggregates multiple search engines (Google, Bing, DuckDuckGo, etc.)
+    with no rate limits and no query logging. Run locally via Docker:
+      docker run -d -p 8080:8080 searxng/searxng
+    then set SEARXNG_BASE_URL=http://localhost:8080 in .env.
+    """
+    import httpx
+
+    from ..config import settings
+
+    seen_urls: set[str] = set()
+    results: list[dict] = []
+
+    with httpx.Client(timeout=15.0) as client:
+        for query in queries:
+            log.debug("SearXNG searching: %s", query)
+            try:
+                resp = client.get(
+                    f"{settings.searxng_base_url}/search",
+                    params={"q": query, "format": "json", "language": "en"},
+                    headers={"Accept": "application/json"},
+                )
+                resp.raise_for_status()
+                for r in resp.json().get("results", [])[:max_results_per_query]:
+                    url = r.get("url", "")
+                    if not url or url in seen_urls or _is_stale_pinned(url):
+                        continue
+                    seen_urls.add(url)
+                    results.append({
+                        "url": url,
+                        "title": r.get("title", ""),
+                        "snippet": r.get("content", ""),
+                        "content": "",
+                        "priority": _domain_score(url),
+                        "score": float(r.get("score", 0.0)),
+                    })
+            except Exception as e:
+                log.warning("SearXNG search failed for query '%s': %s", query[:60], e)
+
+    results.sort(key=lambda r: (r["score"], r["priority"]), reverse=True)
+    log.info("SearXNG found %d results across %d queries", len(results), len(queries))
+    return results
+
+
 def search_current_facts(queries: list[str], max_results_per_query: int = 4) -> list[dict]:
     """Retrieval for current-facts queries (latest version, news, prices).
 
-    Uses Tavily when ``TAVILY_API_KEY`` is configured — clean, recency-ranked,
-    pre-extracted content, which is exactly what DuckDuckGo + HTML scraping fails
-    to provide for "what is the latest X" questions. Falls back to DuckDuckGo
-    (with stale-URL filtering) when no key is set or Tavily errors.
+    Routing order (first available wins):
+      1. SearXNG  — self-hosted, no rate limits, aggregates multiple engines
+      2. Tavily   — paid API, clean pre-extracted content
+      3. DuckDuckGo — free scraping fallback
     """
     from ..config import settings
+
+    if settings.searxng_base_url:
+        try:
+            results = _searxng_search(queries, max_results_per_query)
+            if results:
+                return results
+            log.warning("SearXNG returned no results — falling back")
+        except Exception as e:
+            log.warning("SearXNG failed (%s) — falling back", e)
 
     if settings.tavily_api_key:
         try:
             return _tavily_search(queries, max_results_per_query)
         except Exception as e:
             log.warning("Tavily search failed (%s) — falling back to DuckDuckGo", e)
+
     return search(queries, max_results_per_query)
